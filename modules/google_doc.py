@@ -15,13 +15,11 @@ class GoogleDocModule:
         return match.group(1) if match else None
 
     def read_doc_content(self, url: str) -> dict:
-        """Kiểm tra và đọc nội dung Doc theo 3 Cấp độ phân quyền"""
         doc_id = self.extract_doc_id(url)
         if not doc_id:
-            return {"status": "invalid_url", "content": "", "warning": "URL Google Doc không đúng định dạng"}
+            return {"status": "invalid_url", "content": "", "warning": "URL Google Doc không hợp lệ"}
 
         try:
-            # Thu thập thông tin tài liệu
             document = self.docs_service.documents().get(documentId=doc_id).execute()
             doc_text = ""
             for element in document.get('body', {}).get('content', []):
@@ -30,44 +28,34 @@ class GoogleDocModule:
                         if 'textRun' in p_elem:
                             doc_text += p_elem['textRun'].get('content', '')
 
-            # Kiểm tra xem có quyền Comment hay không
-            file_metadata = self.drive_service.files().get(fileId=doc_id, fields="capabilities").execute()
-            can_comment = file_metadata.get('capabilities', {}).get('canComment', False)
-
-            if can_comment:
-                # LEVEL 1: Đầy đủ quyền Read + Comment
-                return {
-                    "status": "full_access",
-                    "doc_title": document.get('title', 'Untitled'),
-                    "content": doc_text.strip(),
-                    "warning": "None"
-                }
-            else:
-                # LEVEL 2: Chỉ có quyền Read (View Only), không Comment được
-                return {
-                    "status": "view_only",
-                    "doc_title": document.get('title', 'Untitled'),
-                    "content": doc_text.strip(),
-                    "warning": "⚠️ Doc ở chế độ View Only (Cần mở quyền Commenter để Tag nhân sự)"
-                }
-
+            return {
+                "status": "full_access",
+                "doc_title": document.get('title', 'Untitled'),
+                "content": doc_text.strip(),
+                "warning": "None"
+            }
         except Exception as e:
-            # LEVEL 3: Restricted / Khóa kín hoàn toàn (Lỗi 403)
             return {
                 "status": "restricted",
                 "doc_title": "Khóa truy cập",
                 "content": "",
-                "warning": f"🔒 Tài liệu bị KHÓA QUYỀN TRUY CẬP (Restricted). Anh cần nhấp vào link để Bấm 'Request Access'!"
+                "warning": f"🔒 Doc bị khóa quyền. Cần bấm Request Access!"
             }
 
-    def add_comment_and_tag(self, url: str, tag_email: str, comment_text: str):
-        """Thử chèn comment, nếu lỗi thiếu quyền sẽ trả về thông báo"""
+    def add_comment_and_assign(self, url: str, tag_email: str, comment_text: str):
+        """TỰ ĐỘNG CHÈN COMMENT & CẤP QUYỀN ASSIGN ACTION ITEM CHO EMAIL"""
         doc_id = self.extract_doc_id(url)
         if not doc_id: return False, "URL không hợp lệ"
 
         try:
-            body = {'content': f"@{tag_email} {comment_text}"}
+            body = {
+                'content': f"@{tag_email} {comment_text}",
+                'assignee': {
+                    'emailAddress': tag_email  # KÍCH HOẠT TỰ ĐỘNG ASSIGN TO YOU TƯƠNG TỰ HÌNH 5
+                }
+            }
             self.drive_service.comments().create(fileId=doc_id, body=body, fields='id').execute()
+            print(f"✅ Đã tự động Assign Action Item cho {tag_email} trên Doc!")
             return True, "Thành công"
         except Exception as e:
-            return False, f"Không thể Comment do thiếu quyền (Chi tiết: {e})"
+            return False, f"Lỗi Assign: {e}"
