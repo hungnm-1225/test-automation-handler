@@ -8,7 +8,6 @@ class TelegramHandler:
         self.api_url = f"https://api.telegram.org/bot{bot_token}"
 
     def send_approval_card(self, row_data: dict, ai_analysis: dict):
-        """Gửi thẻ tổng hợp thông tin kèm nút bấm phê duyệt"""
         warning_text = f"\n⚠️ **CẢNH BÁO:** {ai_analysis.get('doc_warning')}" if ai_analysis.get('doc_warning') != "None" else ""
         
         message_text = f"""
@@ -31,7 +30,6 @@ class TelegramHandler:
 👇 **ANH HÙNG NGUYỄN MẠNH BẤM DUYỆT BÊN DƯỚI:**
         """
 
-        # Tạo nút bấm tương tác
         row_num = row_data.get('row_number')
         cat = ai_analysis.get('category')
         email = ai_analysis.get('suggested_assignee_email')
@@ -59,4 +57,11 @@ class TelegramHandler:
         }
         
         res = requests.post(f"{self.api_url}/sendMessage", json=payload)
-        return res.json()
+        res_data = res.json()
+        
+        if not res_data.get("ok"):
+            print(f"⚠️ LỖI GỬI TELEGRAM (Có thể sai Chat ID): {res_data}")
+        else:
+            print(f"📲 Đã bắn tin nhắn Telegram thành công tới Chat ID {self.chat_id}!")
+            
+        return res_data
