@@ -8,27 +8,26 @@ class TelegramHandler:
         self.api_url = f"https://api.telegram.org/bot{bot_token}"
 
     def send_approval_card(self, row_data: dict, ai_analysis: dict):
-        warning_text = f"\n⚠️ **CẢNH BÁO:** {ai_analysis.get('doc_warning')}" if ai_analysis.get('doc_warning') != "None" else ""
+        warning_text = f"\n⚠️ <b>CẢNH BÁO:</b> {ai_analysis.get('doc_warning')}" if ai_analysis.get('doc_warning') != "None" else ""
         
-        message_text = f"""
-📥 **[FEEDBACK MỚI CẦN XỬ LÝ - #{row_data.get('fb_id')}]**
+        # Chuyển sang định dạng HTML chuẩn
+        message_text = f"""📥 <b>[FEEDBACK MỚI CẦN XỬ LÝ - #{row_data.get('fb_id')}]</b>
 
-👤 **Người gửi:** {row_data.get('submitter')} ({row_data.get('country')})
-📌 **Tiêu đề:** {row_data.get('subject')}
-📝 **Ghi chú:** {row_data.get('remarks') or 'Không có'}
-📄 **Google Doc:** [Mở File Doc]({row_data.get('doc_link')}){warning_text}
+👤 <b>Người gửi:</b> {row_data.get('submitter')} ({row_data.get('country')})
+📌 <b>Tiêu đề:</b> {row_data.get('subject')}
+📝 <b>Ghi chú:</b> {row_data.get('remarks') or 'Không có'}
+📄 <b>Google Doc:</b> <a href="{row_data.get('doc_link')}">Mở File Doc</a>{warning_text}
 
 ---
-🧠 **AI TÓM TẮT NỘI DUNG DOC & BÀI TOÁN:**
+🧠 <b>AI TÓM TẮT NỘI DUNG DOC & BÀI TOÁN:</b>
 • {ai_analysis.get('summary')}
 
-🎯 **AI ĐỀ XUẤT:**
-• **Category:** `{ai_analysis.get('category')}`
-• **Phân công:** {ai_analysis.get('suggested_assignee_name')} (`{ai_analysis.get('suggested_assignee_email')}`)
-• **Mức độ:** {ai_analysis.get('priority')}
+🎯 <b>AI ĐỀ XUẤT:</b>
+• <b>Category:</b> <code>{ai_analysis.get('category')}</code>
+• <b>Phân công:</b> {ai_analysis.get('suggested_assignee_name')} (<code>{ai_analysis.get('suggested_assignee_email')}</code>)
+• <b>Mức độ:</b> {ai_analysis.get('priority')}
 
-👇 **ANH HÙNG NGUYỄN MẠNH BẤM DUYỆT BÊN DƯỚI:**
-        """
+👇 <b>ANH HÙNG NGUYỄN MẠNH BẤM DUYỆT BÊN DƯỚI:</b>"""
 
         row_num = row_data.get('row_number')
         cat = ai_analysis.get('category')
@@ -52,7 +51,7 @@ class TelegramHandler:
         payload = {
             "chat_id": self.chat_id,
             "text": message_text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML", # Đổi sang HTML chống lỗi ký tự đặc biệt
             "reply_markup": json.dumps(keyboard)
         }
         
@@ -60,7 +59,7 @@ class TelegramHandler:
         res_data = res.json()
         
         if not res_data.get("ok"):
-            print(f"⚠️ LỖI GỬI TELEGRAM (Có thể sai Chat ID): {res_data}")
+            print(f"⚠️ LỖI GỬI TELEGRAM: {res_data}")
         else:
             print(f"📲 Đã bắn tin nhắn Telegram thành công tới Chat ID {self.chat_id}!")
             
