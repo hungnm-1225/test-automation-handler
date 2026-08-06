@@ -8,12 +8,11 @@ class AIEngine:
             self.kb = json.load(f)
 
     def _call_gemini_api(self, prompt: str) -> str:
-        """Gọi trực tiếp Gemini REST API với danh sách Model tự động Fallback"""
-        # Ưu tiên chạy Gemini 2.0 Flash -> Gemini 1.5 Flash -> Gemini 1.5 Pro
+        # Danh sách mô hình chuẩn chính thức từ Google Gemini API
         models_to_try = [
-            "gemini-3.6-flash",     # Model mới nhất 2026 siêu tốc & thông minh cho Agentic Task
-            "gemini-3.5-flash",     # Model thế hệ 3 cực kỳ ổn định
-            "gemini-3.1-pro"        # Model Pro chuyên suy luận sâu
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-2.0-flash-exp"
         ]
 
         last_error = None
@@ -41,7 +40,6 @@ class AIEngine:
         raise RuntimeError(f"Không thể kết nối Gemini API. Chi tiết: {last_error}")
 
     def analyze_and_summarize(self, feedback_data: dict, doc_data: dict) -> dict:
-        """Hàm AI đọc toàn bộ Form + Nội dung Doc và xuất bản Tóm tắt + Đề xuất Person"""
         prompt = f"""
         Bạn là Chuyên gia AI Triage quản lý hệ thống PTV Taskforce Support.
         Hãy đọc thông tin Feedback và nội dung chi tiết trong Google Doc đính kèm để phân loại & tóm tắt.
