@@ -8,6 +8,7 @@ class GoogleSheetModule:
     def __init__(self, spreadsheet_id: str, creds_path: str = 'credentials.json'):
         self.spreadsheet_id = spreadsheet_id
         credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        # ĐÃ SỬA: Thay '4' thành 'v4' ở dòng này
         self.service = build('sheets', 'v4', credentials=credentials)
 
     def get_unprocessed_rows(self, sheet_name: str = 'Form_Responses'):
@@ -29,16 +30,15 @@ class GoogleSheetModule:
                     "timestamp": row[0] if len(row) > 0 else "",
                     "country": row[1] if len(row) > 1 else "",
                     "submitter": row[2] if len(row) > 2 else "",
-                    "subject": row[3] if len(row) > 3 else "",
-                    "doc_link": row[5] if len(row) > 5 else "",
-                    "remarks": row[6] if len(row) > 6 else "",
-                    "fb_id": row[8] if len(row) > 8 else f"FB-{index:03d}"
+                    "subject": row[5] if len(row) > 5 else "",      # Cột F: SUBJECT
+                    "doc_link": row[6] if len(row) > 6 else "",     # Cột G: REPORT GoogleDoc
+                    "remarks": row[7] if len(row) > 7 else "",      # Cột H: REMARKS
+                    "fb_id": row[8] if len(row) > 8 else f"FB-{index:03d}" # Cột I: FB ID
                 })
         return unprocessed
 
     def update_feedback_row(self, row_number: int, category: str, assigned_person: str, status: str = "To Implement", sheet_name: str = 'Form_Responses'):
         """Cập nhật kết quả sau khi anh bấm Duyệt trên Telegram"""
-        # Cột K: CATEGORY, Cột L: Assigned, Cột P: STATUS
         range_category = f"'{sheet_name}'!K{row_number}"
         range_assigned = f"'{sheet_name}'!L{row_number}"
         range_status = f"'{sheet_name}'!P{row_number}"
@@ -71,13 +71,10 @@ class GoogleSheetModule:
             assigned = row[11] if len(row) > 11 else ""
             status = row[15] if len(row) > 15 else ""
 
-            # 1. Request mới chưa phân loại
             if not category.strip() or not status.strip():
                 stats["new_requests"] += 1
-            # 2. Đã hoàn thành
             elif status in ["Closed", "Resolved"]:
                 stats["completed"] += 1
-            # 3. Đang xử lý / Đã gán người
             else:
                 stats["in_progress"] += 1
 
