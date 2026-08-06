@@ -1,29 +1,47 @@
 import json
-import google.generativeai as genai
+import requests
 
 class AIEngine:
     def __init__(self, api_key: str, knowledge_base_path: str = 'brain/knowledge_base.json'):
-        genai.configure(api_key=api_key)
-        
-        # Tự động dò tìm các Model Gemini Flash mới nhất có sẵn trong API Key
-        chosen_model_name = 'gemini-2.0-flash'
-        try:
-            available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            flash_models = [m for m in available_models if 'flash' in m.lower()]
-            if flash_models:
-                chosen_model_name = flash_models[0] # Lấy model flash mới nhất
-            elif available_models:
-                chosen_model_name = available_models[0]
-            print(f"🤖 AI Engine tự động chọn Model: '{chosen_model_name}'")
-        except Exception as e:
-            print(f"⚠️ Dùng mặc định gemini-2.0-flash. Lỗi list model: {e}")
-
-        self.model = genai.GenerativeModel(chosen_model_name)
-
+        self.api_key = api_key
         with open(knowledge_base_path, 'r', encoding='utf-8') as f:
             self.kb = json.load(f)
 
+    def _call_gemini_api(self, prompt: str) -> str:
+        """Gọi trực tiếp Gemini REST API với danh sách Model tự động Fallback"""
+        # Ưu tiên chạy Gemini 2.0 Flash -> Gemini 1.5 Flash -> Gemini 1.5 Pro
+        models_to_try = [
+            "gemini-3.6-flash",     # Model mới nhất 2026 siêu tốc & thông minh cho Agentic Task
+            "gemini-3.5-flash",     # Model thế hệ 3 cực kỳ ổn định
+            "gemini-3.1-pro"        # Model Pro chuyên suy luận sâu
+        ]
+
+        last_error = None
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [{"text": prompt}]
+                    }
+                ]
+            }
+            try:
+                res = requests.post(url, json=payload, timeout=30)
+                if res.status_code == 200:
+                    data = res.json()
+                    text_out = data['candidates'][0]['content']['parts'][0]['text']
+                    print(f"🤖 AI phản hồi thành công sử dụng Model: [{model}]")
+                    return text_out
+                else:
+                    last_error = f"HTTP {res.status_code}: {res.text}"
+            except Exception as e:
+                last_error = str(e)
+
+        raise RuntimeError(f"Không thể kết nối Gemini API. Chi tiết: {last_error}")
+
     def analyze_and_summarize(self, feedback_data: dict, doc_data: dict) -> dict:
+        """Hàm AI đọc toàn bộ Form + Nội dung Doc và xuất bản Tóm tắt + Đề xuất Person"""
         prompt = f"""
         Bạn là Chuyên gia AI Triage quản lý hệ thống PTV Taskforce Support.
         Hãy đọc thông tin Feedback và nội dung chi tiết trong Google Doc đính kèm để phân loại & tóm tắt.
@@ -41,7 +59,7 @@ class AIEngine:
         - Tieu de Doc: {doc_data.get('doc_title', 'N/A')}
         - Noi dung Doc: {doc_data.get('content', 'Không thể đọc nội dung file Doc này')}
 
-        YÊU CẦU ĐẦU RA (Trả về định dạng JSON thuần túy, không có mã markdown ```json):
+        YÊU CẦU ĐẦU RA (Bắt buộc trả về định dạng JSON thuần túy, KHÔNG chứa các ký tự mã ```json hay markdown):
         {{
             "summary": "Tóm tắt ngắn gọn 2-3 câu bản chất lỗi/yêu cầu",
             "category": "Chọn 1 trong các nhóm: Account, Software, Content, other",
@@ -51,6 +69,6 @@ class AIEngine:
             "doc_warning": "Warning nếu doc bị khóa quyền hoặc null, ngược lại ghi None"
         }}
         """
-        response = self.model.generate_content(prompt)
-        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        raw_text = self._call_gemini_api(prompt)
+        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
         return json.loads(clean_text)
