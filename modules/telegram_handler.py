@@ -21,4 +21,27 @@ def send_approval_card(self, row_data: dict, ai_analysis: dict):
 
 👇 **ANH HÙNG NGUYỄN MẠNH BẤM DUYỆT BÊN DƯỚI:**
         """
-        # ... (Phần bên dưới giữ nguyên) ...
+
+        row_num = row_data.get('row_number')
+        cat = ai_analysis.get('category')
+        email = ai_analysis.get('suggested_assignee_email')
+        doc_url = row_data.get('doc_link', '')
+
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": f"✅ Duyệt & Tag {ai_analysis.get('suggested_assignee_name')}", "callback_data": f"approve|{row_num}|{cat}|{email}|{doc_url}"}],
+                [
+                    {"text": "👤 Tag Quang Định", "callback_data": f"approve|{row_num}|Software|quang.dinh@dtt.vn|{doc_url}"},
+                    {"text": "👤 Tag Linh Đặng", "callback_data": f"approve|{row_num}|Content|linh.dang.edu@dtt.vn|{doc_url}"}
+                ]
+            ]
+        }
+
+        payload = {
+            "chat_id": self.chat_id,
+            "text": message_text,
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps(keyboard)
+        }
+        res = requests.post(f"{self.api_url}/sendMessage", json=payload)
+        return res.json()
