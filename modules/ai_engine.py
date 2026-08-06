@@ -1,73 +1,55 @@
 import json
-import requests
+import os
+import google.generativeai as genai
 
 class AIEngine:
     def __init__(self, api_key: str, knowledge_base_path: str = 'brain/knowledge_base.json'):
-        self.api_key = api_key
+        genai.configure(api_key=api_key)
+        # Sử dụng model Gemini 3.6 Flash hoặc Gemini 3.1 Flash theo cấu hình .env
+        self.model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        self.model = genai.GenerativeModel(self.model_name)
         with open(knowledge_base_path, 'r', encoding='utf-8') as f:
             self.kb = json.load(f)
-
-    def _call_gemini_api(self, prompt: str) -> str:
-        # Danh sách mô hình chuẩn chính thức theo Google AI Documentation 2026
-        models_to_try = [
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-3.1-pro-preview"
-        ]
-
-        last_error = None
-        for model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [{"text": prompt}]
-                    }
-                ]
-            }
-            try:
-                res = requests.post(url, json=payload, timeout=30)
-                if res.status_code == 200:
-                    data = res.json()
-                    text_out = data['candidates'][0]['content']['parts'][0]['text']
-                    print(f"🤖 AI phản hồi thành công sử dụng Model: [{model}]")
-                    return text_out
-                else:
-                    print(f"⚠️ Model [{model}] không trả về 200 (Mã: {res.status_code}), đang thử model tiếp theo...")
-                    last_error = f"HTTP {res.status_code}: {res.text}"
-            except Exception as e:
-                last_error = str(e)
-
-        raise RuntimeError(f"Không thể kết nối Gemini API. Chi tiết: {last_error}")
 
     def analyze_and_summarize(self, feedback_data: dict, doc_data: dict) -> dict:
         prompt = f"""
         Bạn là Chuyên gia AI Triage quản lý hệ thống PTV Taskforce Support.
-        Hãy đọc thông tin Feedback và nội dung chi tiết trong Google Doc đính kèm để phân loại & tóm tắt.
+        Hãy đọc thông tin Feedback và nội dung chi tiết trong Google Doc để phân loại & tóm tắt.
 
-        THÔNG TIN HỆ THỐNG & NHÂN SỰ (KNOWLEDGE BASE):
+        KNOWLEDGE BASE:
         {json.dumps(self.kb, ensure_ascii=False)}
 
-        ĐẦU VÀO FORM FEEDBACK:
+        ĐẦU VÀO FORM:
         - Submitter: {feedback_data.get('submitter')} ({feedback_data.get('country')})
         - Subject: {feedback_data.get('subject')}
         - Remarks: {feedback_data.get('remarks')}
 
         NỘI DUNG ĐỌC TỪ GOOGLE DOC:
-        - Trang thai Doc: {doc_data.get('status')}
-        - Tieu de Doc: {doc_data.get('doc_title', 'N/A')}
-        - Noi dung Doc: {doc_data.get('content', 'Không thể đọc nội dung file Doc này')}
+        - Trạng thái Doc: {doc_data.get('status')}
+        - Tiêu đề Doc: {doc_data.get('doc_title', 'N/A')}
+        - Nội dung Doc: {doc_data.get('content', 'Không thể đọc nội dung')}
 
-        YÊU CẦU ĐẦU RA (Bắt buộc trả về định dạng JSON thuần túy, KHÔNG chứa các ký tự mã ```json hay markdown):
+        YÊU CẦU ĐẦU RA (Trả về định dạng JSON thuần túy, không chứa mã ```json):
         {{
-            "summary": "Tóm tắt ngắn gọn 2-3 câu bản chất lỗi/yêu cầu",
+            "summary": "Tóm tắt bản chất lỗi/yêu cầu trong 2-3 câu ngắn gọn",
             "category": "Chọn 1 trong các nhóm: Account, Software, Content, other",
             "suggested_assignee_name": "Tên nhân sự được đề xuất từ Knowledge Base",
             "suggested_assignee_email": "Email của nhân sự được đề xuất",
             "priority": "Normal hoặc Urgent",
-            "doc_warning": "Warning nếu doc bị khóa quyền hoặc null, ngược lại ghi None"
+            "doc_warning": "{doc_data.get('warning', 'None')}"
         }}
         """
-        raw_text = self._call_gemini_api(prompt)
-        clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-        return json.loads(clean_text)
+        try:
+            response = self.model.generate_content(prompt)
+            clean_text = response.text.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_text)
+        except Exception as e:
+            print(f"Lỗi AI Engine ({self.model_name}): {e}")
+            return {
+                "summary": f"Chưa thể tóm tắt do lỗi AI ({self.model_name}): {str(e)}",
+                "category": "other",
+                "suggested_assignee_name": "Anh Hùng Nguyễn Mạnh",
+                "suggested_assignee_email": "hung.nguyenmanh@dtt.vn",
+                "priority": "Normal",
+                "doc_warning": doc_data.get('warning', 'None')
+            }
