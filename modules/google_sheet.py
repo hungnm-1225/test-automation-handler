@@ -23,7 +23,7 @@ class GoogleSheetModule:
         else:
             raise FileNotFoundError(f"Không tìm thấy biến GOOGLE_CREDENTIALS_JSON hoặc file {creds_path}")
 
-        self.service = build('sheets', '4', credentials=credentials)
+        self.service = build('sheets', 'v4', credentials=credentials)
 
     def get_unprocessed_rows(self, sheet_name: str = 'Form_Responses'):
         sheet = self.service.spreadsheets()
