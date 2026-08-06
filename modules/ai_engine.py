@@ -8,11 +8,11 @@ class AIEngine:
             self.kb = json.load(f)
 
     def _call_gemini_api(self, prompt: str) -> str:
-        # Danh sách mô hình chuẩn chính thức từ Google Gemini API
+        # Danh sách mô hình chuẩn chính thức theo Google AI Documentation 2026
         models_to_try = [
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-            "gemini-2.0-flash-exp"
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.1-pro-preview"
         ]
 
         last_error = None
@@ -33,6 +33,7 @@ class AIEngine:
                     print(f"🤖 AI phản hồi thành công sử dụng Model: [{model}]")
                     return text_out
                 else:
+                    print(f"⚠️ Model [{model}] không trả về 200 (Mã: {res.status_code}), đang thử model tiếp theo...")
                     last_error = f"HTTP {res.status_code}: {res.text}"
             except Exception as e:
                 last_error = str(e)
