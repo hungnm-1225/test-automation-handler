@@ -8,12 +8,31 @@ class GoogleSheetModule:
     def __init__(self, spreadsheet_id: str, creds_path: str = 'credentials.json'):
         self.spreadsheet_id = spreadsheet_id
         credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
-        # ĐÃ SỬA: Thay '4' thành 'v4' ở dòng này
         self.service = build('sheets', 'v4', credentials=credentials)
+        self._cached_sheet_name = None
 
-    def get_unprocessed_rows(self, sheet_name: str = 'Form_Responses'):
+    def get_first_sheet_name(self) -> str:
+        """Tự động lấy tên tab đầu tiên trong file Google Sheet để tránh lỗi sai tên trang"""
+        if self._cached_sheet_name:
+            return self._cached_sheet_name
+
+        try:
+            spreadsheet = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            sheets = spreadsheet.get('sheets', [])
+            if sheets:
+                self._cached_sheet_name = sheets[0]['properties']['title']
+                print(f"📌 Tự động nhận diện Tab Google Sheet là: '{self._cached_sheet_name}'")
+                return self._cached_sheet_name
+        except Exception as e:
+            print(f"⚠️ Không thể lấy metadata tab, dùng tên mặc định 'Form_Responses'. Lỗi: {e}")
+            
+        return 'Form_Responses'
+
+    def get_unprocessed_rows(self, sheet_name: str = None):
         """Đọc danh sách các dòng chưa có CATEGORY (Cột K trống)"""
+        sheet_name = sheet_name or self.get_first_sheet_name()
         sheet = self.service.spreadsheets()
+        
         result = sheet.values().get(
             spreadsheetId=self.spreadsheet_id,
             range=f"'{sheet_name}'!A2:Q100"
@@ -22,7 +41,6 @@ class GoogleSheetModule:
         
         unprocessed = []
         for index, row in enumerate(rows, start=2): # Bắt đầu từ dòng 2
-            # Kiểm tra nếu cột K (CATEGORY - index 10) bị trống
             category = row[10] if len(row) > 10 else ""
             if not category.strip():
                 unprocessed.append({
@@ -37,8 +55,10 @@ class GoogleSheetModule:
                 })
         return unprocessed
 
-    def update_feedback_row(self, row_number: int, category: str, assigned_person: str, status: str = "To Implement", sheet_name: str = 'Form_Responses'):
+    def update_feedback_row(self, row_number: int, category: str, assigned_person: str, status: str = "To Implement", sheet_name: str = None):
         """Cập nhật kết quả sau khi anh bấm Duyệt trên Telegram"""
+        sheet_name = sheet_name or self.get_first_sheet_name()
+        
         range_category = f"'{sheet_name}'!K{row_number}"
         range_assigned = f"'{sheet_name}'!L{row_number}"
         range_status = f"'{sheet_name}'!P{row_number}"
@@ -53,9 +73,11 @@ class GoogleSheetModule:
         sheet.update(spreadsheetId=self.spreadsheet_id, range=range_status, valueInputOption="USER_ENTERED", body=body_status).execute()
         print(f"✅ Đã cập nhật dòng {row_number} trên Google Sheet thành công!")
 
-    def get_dashboard_stats(self, sheet_name: str = 'Form_Responses') -> dict:
+    def get_dashboard_stats(self, sheet_name: str = None) -> dict:
         """Đọc và thống kê nhanh chỉ số của toàn bộ danh sách Feedback"""
+        sheet_name = sheet_name or self.get_first_sheet_name()
         sheet = self.service.spreadsheets()
+        
         result = sheet.values().get(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2:P200").execute()
         rows = result.get('values', [])
 
