@@ -2,13 +2,8 @@ name: PTV Feedback 24/7 Cloud Automation
 
 on:
   schedule:
-    # 1. Quét feedback mới 30 phút/lần
     - cron: '*/30 * * * *'
-    
-    # 2. Báo cáo tổng kết lúc 22:00 đêm Việt Nam (UTC+7 -> 15:00 UTC)
     - cron: '0 15 * * *'
-
-  # Cho phép anh bấm nút "Run workflow" thủ công bất cứ lúc nào trên web GitHub
   workflow_dispatch:
 
 jobs:
@@ -21,14 +16,17 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'  # Nâng lên 3.11 để hết báo lỗi warning
 
       - name: Install Dependencies
         run: pip install -r requirements.txt
 
-      - name: Create credentials.json from Secret
+      # Dùng Python ghi file trực tiếp để không bao giờ bị méo dấu ngoặc kép " "
+      - name: Create credentials.json safely
+        env:
+          GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         run: |
-          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > credentials.json
+          python -c "import os; open('credentials.json', 'w').write(os.environ['GOOGLE_CREDS'])"
 
       - name: Run 30m Feedback Scan
         if: github.event.schedule != '0 15 * * *'
