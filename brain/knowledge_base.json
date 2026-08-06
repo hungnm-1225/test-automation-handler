@@ -1,0 +1,26 @@
+{
+  "system_name": "PTV Taskforce Support System",
+  "team_members": [
+    {
+      "id": "quang_dinh",
+      "name": "Quang Định",
+      "email": "quang.dinh@dtt.vn",
+      "role": "LMS & eCertificate Specialist",
+      "categories": ["Software", "eCertificate", "PLearn"]
+    },
+    {
+      "name": "Linh Đặng Thùy",
+      "email": "linh.dang.edu@dtt.vn",
+      "role": "Content Lead",
+      "categories": ["Content", "Curriculum"]
+    },
+    {
+      "name": "Trịnh Bạch Tố",
+      "email": "trinh.bach.to@dtt.vn",
+      "role": "System Administrator",
+      "categories": ["Account", "Workspace", "PGit"]
+    }
+  ],
+  "categories": ["Account", "Software", "Content", "other"],
+  "status_pipeline": ["To Implement", "Resolved", "Closed", "Backlog", "Non-Critical"]
+}
