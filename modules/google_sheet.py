@@ -9,7 +9,6 @@ class GoogleSheetModule:
     def __init__(self, spreadsheet_id: str, creds_path: str = 'credentials.json'):
         self.spreadsheet_id = spreadsheet_id
         
-        # Ưu tiên 1: Đọc từ Biến Môi Trường trên Render (GOOGLE_CREDENTIALS_JSON)
         env_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
         if env_creds:
             try:
@@ -17,7 +16,6 @@ class GoogleSheetModule:
                 credentials = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
             except Exception as e:
                 raise ValueError(f"Lỗi đọc JSON từ GOOGLE_CREDENTIALS_JSON: {e}")
-        # Ưu tiên 2: Nếu ở Local thì đọc từ file credentials.json
         elif os.path.exists(creds_path):
             credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         else:
@@ -25,7 +23,23 @@ class GoogleSheetModule:
 
         self.service = build('sheets', 'v4', credentials=credentials)
 
-    def get_unprocessed_rows(self, sheet_name: str = 'Form_Responses'):
+    def get_first_sheet_name(self) -> str:
+        """Tự động hỏi Google Sheet lấy tên Tab đầu tiên để tránh lỗi sai tên Tab"""
+        try:
+            spreadsheet = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            sheets = spreadsheet.get('sheets', [])
+            if sheets:
+                title = sheets[0]['properties']['title']
+                print(f"📊 Tìm thấy tên Tab thực tế trên Sheet: '{title}'")
+                return title
+        except Exception as e:
+            print(f"⚠️ Lỗi tự động lấy tên sheet: {e}")
+        return 'Form Responses 1'
+
+    def get_unprocessed_rows(self, sheet_name: str = None):
+        if not sheet_name:
+            sheet_name = self.get_first_sheet_name()
+
         sheet = self.service.spreadsheets()
         result = sheet.values().get(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2:N100").execute()
         rows = result.get('values', [])
@@ -47,16 +61,22 @@ class GoogleSheetModule:
                 })
         return unprocessed
 
-    def update_feedback_row(self, row_number: int, category: str, assigned_person: str, targetted_date: str = "", status: str = "To Implement", sheet_name: str = 'Form_Responses'):
+    def update_feedback_row(self, row_number: int, category: str, assigned_person: str, targetted_date: str = "", status: str = "To Implement", sheet_name: str = None):
+        if not sheet_name:
+            sheet_name = self.get_first_sheet_name()
+
         sheet = self.service.spreadsheets().values()
         sheet.update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!J{row_number}", valueInputOption="USER_ENTERED", body={'values': [[category]]}).execute()
         sheet.update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!K{row_number}", valueInputOption="USER_ENTERED", body={'values': [[assigned_person]]}).execute()
         if targetted_date:
             sheet.update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!L{row_number}", valueInputOption="USER_ENTERED", body={'values': [[targetted_date]]}).execute()
         sheet.update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!M{row_number}", valueInputOption="USER_ENTERED", body={'values': [[status]]}).execute()
-        print(f"✅ Đã điền tự động Cột J->M cho dòng #{row_number} trên Sheet!")
+        print(f"✅ Đã điền tự động Cột J->M cho dòng #{row_number} trên Sheet '{sheet_name}'!")
 
-    def get_dashboard_stats(self, sheet_name: str = 'Form_Responses') -> dict:
+    def get_dashboard_stats(self, sheet_name: str = None) -> dict:
+        if not sheet_name:
+            sheet_name = self.get_first_sheet_name()
+
         sheet = self.service.spreadsheets()
         result = sheet.values().get(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2:M200").execute()
         rows = result.get('values', [])
