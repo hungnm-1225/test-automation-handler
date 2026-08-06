@@ -5,9 +5,18 @@ import google.generativeai as genai
 class AIEngine:
     def __init__(self, api_key: str, knowledge_base_path: str = 'brain/knowledge_base.json'):
         genai.configure(api_key=api_key)
-        # Sử dụng model Gemini 3.6 Flash hoặc Gemini 3.1 Flash theo cấu hình .env
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-        self.model = genai.GenerativeModel(self.model_name)
+        
+        # Danh sách ưu tiên dàn Model Gemini 3.x (Tự động Fallback khi bị 429)
+        self.models_cascade = [
+            os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3-flash-preview"
+        ]
+        # Loại bỏ trùng lặp nếu GEMINI_MODEL đã trùng
+        self.models_cascade = list(dict.fromkeys(self.models_cascade))
+        
         with open(knowledge_base_path, 'r', encoding='utf-8') as f:
             self.kb = json.load(f)
 
@@ -39,17 +48,32 @@ class AIEngine:
             "doc_warning": "{doc_data.get('warning', 'None')}"
         }}
         """
-        try:
-            response = self.model.generate_content(prompt)
-            clean_text = response.text.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_text)
-        except Exception as e:
-            print(f"Lỗi AI Engine ({self.model_name}): {e}")
-            return {
-                "summary": f"Chưa thể tóm tắt do lỗi AI ({self.model_name}): {str(e)}",
-                "category": "other",
-                "suggested_assignee_name": "Anh Hùng Nguyễn Mạnh",
-                "suggested_assignee_email": "hung.nguyenmanh@dtt.vn",
-                "priority": "Normal",
-                "doc_warning": doc_data.get('warning', 'None')
-            }
+
+        last_error = None
+        # VÒNG LẶP THỬ LẦN LƯỢT DÀN MODEL GEMINI 3.X
+        for model_name in self.models_cascade:
+            try:
+                print(f"🧠 Đang gọi AI với Model: {model_name}...")
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(prompt)
+                
+                clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                result = json.loads(clean_text)
+                result["used_model"] = model_name # Ghi nhận tên Model đã xử lý thành công
+                print(f"✅ AI xử lý thành công bằng Model: {model_name}")
+                return result
+
+            except Exception as e:
+                last_error = str(e)
+                print(f"⚠️ Model {model_name} bị nghẽn/hết Quota (Lỗi: {e}). Đang tự động chuyển sang Model 3.x tiếp theo...")
+                continue
+
+        return {
+            "summary": f"Chưa thể tóm tắt do tất cả Dàn Model Gemini 3.x đều hết Quota ({last_error})",
+            "category": "other",
+            "suggested_assignee_name": "Anh Hùng Nguyễn Mạnh",
+            "suggested_assignee_email": "hung.nguyenmanh@dtt.vn",
+            "priority": "Normal",
+            "doc_warning": doc_data.get('warning', 'None'),
+            "used_model": "None (Quota Full)"
+        }
