@@ -4,23 +4,24 @@
     {
       "id": "quang_dinh",
       "name": "Quang Định",
-      "email": "quang.dinh@dtt.vn",
+      "email": "hungnm.1225@gmail.com",
       "role": "LMS & eCertificate Specialist",
       "categories": ["Software", "eCertificate", "PLearn"]
     },
     {
+      "id": "linh_dang",
       "name": "Linh Đặng Thùy",
-      "email": "linh.dang.edu@dtt.vn",
+      "email": "hung.nguyenmanh@dtt.vn",
       "role": "Content Lead",
       "categories": ["Content", "Curriculum"]
     },
     {
+      "id": "trinh_bach_to",
       "name": "Trịnh Bạch Tố",
-      "email": "trinh.bach.to@dtt.vn",
+      "email": "Truyvanlangkhach2512@gmail.com",
       "role": "System Administrator",
       "categories": ["Account", "Workspace", "PGit"]
     }
   ],
-  "categories": ["Account", "Software", "Content", "other"],
-  "status_pipeline": ["To Implement", "Resolved", "Closed", "Backlog", "Non-Critical"]
+  "categories": ["Account", "Software", "Content", "other"]
 }
