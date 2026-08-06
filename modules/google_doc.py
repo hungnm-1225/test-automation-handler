@@ -1,3 +1,5 @@
+import os
+import json
 import re
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -6,7 +8,20 @@ SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.c
 
 class GoogleDocModule:
     def __init__(self, creds_path: str = 'credentials.json'):
-        self.creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        # Ưu tiên 1: Đọc từ Biến Môi Trường trên Render
+        env_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
+        if env_creds:
+            try:
+                creds_info = json.loads(env_creds)
+                self.creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+            except Exception as e:
+                raise ValueError(f"Lỗi đọc JSON từ GOOGLE_CREDENTIALS_JSON: {e}")
+        # Ưu tiên 2: Đọc từ file credentials.json ở Local
+        elif os.path.exists(creds_path):
+            self.creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        else:
+            raise FileNotFoundError(f"Không tìm thấy biến GOOGLE_CREDENTIALS_JSON hoặc file {creds_path}")
+
         self.docs_service = build('docs', 'v1', credentials=self.creds)
         self.drive_service = build('drive', 'v3', credentials=self.creds)
 
