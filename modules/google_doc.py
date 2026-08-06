@@ -17,7 +17,7 @@ class GoogleDocModule:
     def read_doc_content(self, url: str) -> dict:
         doc_id = self.extract_doc_id(url)
         if not doc_id:
-            return {"status": "invalid_url", "content": "", "warning": "URL Google Doc không hợp lệ"}
+            return {"status": "invalid_url", "content": "", "warning": "URL không đúng định dạng"}
 
         try:
             document = self.docs_service.documents().get(documentId=doc_id).execute()
@@ -28,34 +28,24 @@ class GoogleDocModule:
                         if 'textRun' in p_elem:
                             doc_text += p_elem['textRun'].get('content', '')
 
-            return {
-                "status": "full_access",
-                "doc_title": document.get('title', 'Untitled'),
-                "content": doc_text.strip(),
-                "warning": "None"
-            }
-        except Exception as e:
-            return {
-                "status": "restricted",
-                "doc_title": "Khóa truy cập",
-                "content": "",
-                "warning": f"🔒 Doc bị khóa quyền. Cần bấm Request Access!"
-            }
+            file_metadata = self.drive_service.files().get(fileId=doc_id, fields="capabilities").execute()
+            can_comment = file_metadata.get('capabilities', {}).get('canComment', False)
 
-    def add_comment_and_assign(self, url: str, tag_email: str, comment_text: str):
-        """TỰ ĐỘNG CHÈN COMMENT & CẤP QUYỀN ASSIGN ACTION ITEM CHO EMAIL"""
+            if can_comment:
+                return {"status": "full_access", "doc_title": document.get('title', 'Untitled'), "content": doc_text.strip(), "warning": "None"}
+            else:
+                return {"status": "view_only", "doc_title": document.get('title', 'Untitled'), "content": doc_text.strip(), "warning": "⚠️ Doc ở chế độ View Only"}
+
+        except Exception as e:
+            return {"status": "restricted", "doc_title": "Khóa truy cập", "content": "", "warning": "🔒 Tài liệu bị KHÓA QUYỀN TRUY CẬP (Restricted)"}
+
+    def add_comment_and_tag(self, url: str, tag_email: str, comment_text: str):
         doc_id = self.extract_doc_id(url)
         if not doc_id: return False, "URL không hợp lệ"
 
         try:
-            body = {
-                'content': f"@{tag_email} {comment_text}",
-                'assignee': {
-                    'emailAddress': tag_email  # KÍCH HOẠT TỰ ĐỘNG ASSIGN TO YOU TƯƠNG TỰ HÌNH 5
-                }
-            }
+            body = {'content': f"@{tag_email} {comment_text}"}
             self.drive_service.comments().create(fileId=doc_id, body=body, fields='id').execute()
-            print(f"✅ Đã tự động Assign Action Item cho {tag_email} trên Doc!")
             return True, "Thành công"
         except Exception as e:
-            return False, f"Lỗi Assign: {e}"
+            return False, f"Không thể Comment: {e}"
