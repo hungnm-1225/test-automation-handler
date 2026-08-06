@@ -1,0 +1,49 @@
+name: PTV Feedback 24/7 Cloud Automation
+
+on:
+  schedule:
+    # 1. Quét feedback mới 30 phút/lần
+    - cron: '*/30 * * * *'
+    
+    # 2. Báo cáo tổng kết lúc 22:00 đêm Việt Nam (UTC+7 -> 15:00 UTC)
+    - cron: '0 15 * * *'
+
+  # Cho phép anh bấm nút "Run workflow" thủ công bất cứ lúc nào trên web GitHub
+  workflow_dispatch:
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create credentials.json from Secret
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > credentials.json
+
+      - name: Run 30m Feedback Scan
+        if: github.event.schedule != '0 15 * * *'
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py --mode=scan
+
+      - name: Run 22:00 Daily Executive Report
+        if: github.event.schedule == '0 15 * * *'
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py --mode=daily_report
