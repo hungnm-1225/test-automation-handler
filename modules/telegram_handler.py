@@ -1,3 +1,4 @@
+import os
 import json
 import requests
 
@@ -8,6 +9,7 @@ class TelegramHandler:
         self.api_url = f"https://api.telegram.org/bot{bot_token}"
 
     def send_approval_card(self, row_data: dict, ai_analysis: dict):
+        model_name = os.getenv('GEMINI_MODEL', 'gemini-3.6-flash')
         warning_text = f"\n⚠️ **CẢNH BÁO:** {ai_analysis.get('doc_warning')}" if ai_analysis.get('doc_warning') != "None" else ""
         
         message_text = f"""
@@ -19,7 +21,7 @@ class TelegramHandler:
 📄 **Google Doc:** [Mở Document]({row_data.get('doc_link')}){warning_text}
 
 ---
-🧠 **AI TÓM TẮT DỮ LIỆU ({os.getenv('GEMINI_MODEL', 'gemini-3.6-flash')}):**
+🧠 **AI TÓM TẮT DỮ LIỆU ({model_name}):**
 • {ai_analysis.get('summary')}
 
 🎯 **AI ĐỀ XUẤT:**
