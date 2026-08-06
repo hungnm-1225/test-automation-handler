@@ -32,9 +32,20 @@ def health_check():
 # 🌟 ROUTE MỚI: BẤM LINK NÀY LÀ KÍCH HOẠT QUÉT SHEET TỨC THÌ
 @app.route('/trigger-scan', methods=['GET'])
 def manual_trigger_scan():
-    print("⚡ [Manual Trigger] Đang chạy quét Sheet thủ công...")
-    job_scan_feedback()
-    return jsonify({"status": "scan_triggered", "message": "Đã chạy quét Sheet thành công!"}), 200
+    try:
+        print("⚡ [Manual Trigger] Đang chạy quét Sheet thủ công...")
+        job_scan_feedback()
+        return jsonify({"status": "scan_triggered", "message": "Đã chạy quét Sheet thành công!"}), 200
+    except Exception as e:
+        import traceback
+        err_msg = traceback.format_exc()
+        print(f"❌ LỖI TRONG ROUTE TRIGGER-SCAN:\n{err_msg}")
+        return jsonify({
+            "status": "error",
+            "error_type": type(e).__name__,
+            "message": str(e),
+            "traceback": err_msg
+        }), 500
 
 @app.route('/telegram-webhook', methods=['POST'])
 def telegram_webhook():
