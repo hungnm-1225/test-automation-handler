@@ -4,12 +4,26 @@ import google.generativeai as genai
 class AIEngine:
     def __init__(self, api_key: str, knowledge_base_path: str = 'brain/knowledge_base.json'):
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Tự động dò tìm các Model Gemini Flash mới nhất có sẵn trong API Key
+        chosen_model_name = 'gemini-2.0-flash'
+        try:
+            available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            flash_models = [m for m in available_models if 'flash' in m.lower()]
+            if flash_models:
+                chosen_model_name = flash_models[0] # Lấy model flash mới nhất
+            elif available_models:
+                chosen_model_name = available_models[0]
+            print(f"🤖 AI Engine tự động chọn Model: '{chosen_model_name}'")
+        except Exception as e:
+            print(f"⚠️ Dùng mặc định gemini-2.0-flash. Lỗi list model: {e}")
+
+        self.model = genai.GenerativeModel(chosen_model_name)
+
         with open(knowledge_base_path, 'r', encoding='utf-8') as f:
             self.kb = json.load(f)
 
     def analyze_and_summarize(self, feedback_data: dict, doc_data: dict) -> dict:
-        """Hàm AI đọc toàn bộ Form + Nội dung Doc và xuất bản Tóm tắt + Đề xuất Person"""
         prompt = f"""
         Bạn là Chuyên gia AI Triage quản lý hệ thống PTV Taskforce Support.
         Hãy đọc thông tin Feedback và nội dung chi tiết trong Google Doc đính kèm để phân loại & tóm tắt.
