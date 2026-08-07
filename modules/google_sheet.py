@@ -30,7 +30,7 @@ class GoogleSheetManager:
 
     def _get_valid_sheet_name(self, requested_name: str) -> str:
         """
-        Tự động lấy tên Tab thực tế trên Google Sheet để tránh lỗi 400 range
+        Tự động lấy tên Tab thực tế trên Google Sheet
         """
         try:
             spreadsheet_info = self.service.spreadsheets().get(
@@ -42,7 +42,7 @@ class GoogleSheetManager:
             if requested_name in sheet_names:
                 return requested_name
             if len(sheet_names) > 0:
-                logger.info(f"Chuyển tên Tab từ '{requested_name}' sang Tab thực tế '{sheet_names[0]}'")
+                logger.info(f"Dùng tab thực tế '{sheet_names[0]}' thay cho '{requested_name}'")
                 return sheet_names[0]
         except Exception as e:
             logger.error(f"Lỗi đọc tên Sheet: {e}")
@@ -50,7 +50,7 @@ class GoogleSheetManager:
 
     def get_unprocessed_rows(self, sheet_name: str = "Feedbacks", *args, **kwargs):
         target_sheet_name = self._get_valid_sheet_name(sheet_name)
-        range_name = f"'{target_sheet_name}'!A2:N"
+        range_name = f"'{target_sheet_name}'!A2:O"
         
         result = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
@@ -64,49 +64,60 @@ class GoogleSheetManager:
             def get_col(idx):
                 return row[idx].strip() if idx < len(row) else ""
 
-            fb_id = get_col(8)        # Cột I (Index 8)
-            category = get_col(10)    # Cột K (Index 10)
-            assigned_cb = get_col(11) # Cột L (Index 11)
-            status = get_col(13)      # Cột N (Index 13)
+            submitter = get_col(3)     # Cột D (Submitter Name)
+            subject = get_col(4)       # Cột E (Subject)
+            fb_id = get_col(8)         # Cột I (FB ID)
+            category = get_col(11)     # Cột L (CATEGORY)
+            assigned_cb = get_col(12)  # Cột M (Assigned Checkbox)
+            status = get_col(14)       # Cột O (STATUS)
 
-            if assigned_cb.upper() != "TRUE" or not category or not status:
+            # ĐIỀU KIỆN LỌC CHUẨN:
+            # 1. Ô Assigned ở Cột M CHƯA ĐƯỢC TÍCK (Khác 'TRUE')
+            # 2. Dòng đó phải có dữ liệu feedback (Có Submitter, Subject hoặc FB ID)
+            if assigned_cb.upper() != "TRUE" and (submitter or subject or fb_id):
+                logger.info(f"📌 Phát hiện Feedback CHƯA XỬ LÝ ở dòng {index} [{fb_id or subject}]")
                 unprocessed.append({
                     "row_index": index,
                     "sheet_name": target_sheet_name,
                     "timestamp": get_col(0),
                     "country": get_col(2),
-                    "submitter": get_col(3),
-                    "subject": get_col(4),
-                    "doc_url": get_col(6),
-                    "remarks": get_col(7),
+                    "submitter": submitter,
+                    "subject": subject,
+                    "doc_url": get_col(6),   # Cột G
+                    "remarks": get_col(7),   # Cột H
                     "fb_id": fb_id if fb_id else f"FB-AUTO-{index}",
                     "category": category,
                     "status": status
                 })
+            else:
+                # Đã tick Assigned [x] -> BỎ QUA HOÀN TOÀN
+                pass
+
         return unprocessed
 
     def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str, *args, **kwargs):
-        # Tự động chuyển về đúng tên Tab thực tế trên Sheet
         target_sheet_name = self._get_valid_sheet_name(sheet_name)
 
-        range_kl = f"'{target_sheet_name}'!K{row_index}:L{row_index}"
-        body_kl = {"values": [[category, True]]}
+        # 1. Cập nhật Cột L (CATEGORY) và Cột M (Assigned Checkbox = TRUE)
+        range_lm = f"'{target_sheet_name}'!L{row_index}:M{row_index}"
+        body_lm = {"values": [[category, True]]}
         
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
-            range=range_kl,
+            range=range_lm,
             valueInputOption="USER_ENTERED",
-            body=body_kl
+            body=body_lm
         ).execute()
 
-        range_n = f"'{target_sheet_name}'!N{row_index}"
-        body_n = {"values": [[status]]}
+        # 2. Cập nhật Cột O (STATUS)
+        range_o = f"'{target_sheet_name}'!O{row_index}"
+        body_o = {"values": [[status]]}
         
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
-            range=range_n,
+            range=range_o,
             valueInputOption="USER_ENTERED",
-            body=body_n
+            body=body_o
         ).execute()
         
-        logger.info(f"✅ Sheet row {row_index} in '{target_sheet_name}' updated successfully.")
+        logger.info(f"✅ Đã gán thành công Row {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE, Status={status}")
