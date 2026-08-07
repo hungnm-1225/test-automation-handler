@@ -28,23 +28,30 @@ class GoogleSheetManager:
         self.creds = get_google_credentials()
         self.service = build('sheets', 'v4', credentials=self.creds)
 
-    def get_unprocessed_rows(self, sheet_name: str = "Feedbacks", *args, **kwargs):
-        # 1. Lấy thông tin các Tab (dùng spreadsheetId chuẩn Google API)
-        spreadsheet_info = self.service.spreadsheets().get(
-            spreadsheetId=self.spreadsheet_id
-        ).execute()
-        
-        sheets = spreadsheet_info.get('sheets', [])
-        sheet_names = [s['properties']['title'] for s in sheets]
-        target_sheet_name = sheet_name
-        
-        if sheet_name not in sheet_names and len(sheet_names) > 0:
-            target_sheet_name = sheet_names[0]
-            logger.info(f"Dùng tab '{target_sheet_name}' để đọc dữ liệu.")
+    def _get_valid_sheet_name(self, requested_name: str) -> str:
+        """
+        Tự động lấy tên Tab thực tế trên Google Sheet để tránh lỗi 400 range
+        """
+        try:
+            spreadsheet_info = self.service.spreadsheets().get(
+                spreadsheetId=self.spreadsheet_id
+            ).execute()
+            sheets = spreadsheet_info.get('sheets', [])
+            sheet_names = [s['properties']['title'] for s in sheets]
+            
+            if requested_name in sheet_names:
+                return requested_name
+            if len(sheet_names) > 0:
+                logger.info(f"Chuyển tên Tab từ '{requested_name}' sang Tab thực tế '{sheet_names[0]}'")
+                return sheet_names[0]
+        except Exception as e:
+            logger.error(f"Lỗi đọc tên Sheet: {e}")
+        return requested_name
 
+    def get_unprocessed_rows(self, sheet_name: str = "Feedbacks", *args, **kwargs):
+        target_sheet_name = self._get_valid_sheet_name(sheet_name)
         range_name = f"'{target_sheet_name}'!A2:N"
         
-        # 2. Đọc dữ liệu (Đã sửa chữ I viết hoa: spreadsheetId)
         result = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
             range=range_name
@@ -62,7 +69,6 @@ class GoogleSheetManager:
             assigned_cb = get_col(11) # Cột L (Index 11)
             status = get_col(13)      # Cột N (Index 13)
 
-            # Nếu chưa tick Checkbox L hoặc Category/Status trống
             if assigned_cb.upper() != "TRUE" or not category or not status:
                 unprocessed.append({
                     "row_index": index,
@@ -80,10 +86,12 @@ class GoogleSheetManager:
         return unprocessed
 
     def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str, *args, **kwargs):
-        range_kl = f"'{sheet_name}'!K{row_index}:L{row_index}"
+        # Tự động chuyển về đúng tên Tab thực tế trên Sheet
+        target_sheet_name = self._get_valid_sheet_name(sheet_name)
+
+        range_kl = f"'{target_sheet_name}'!K{row_index}:L{row_index}"
         body_kl = {"values": [[category, True]]}
         
-        # Cập nhật Category (K) & Checkbox Assigned (L)
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=range_kl,
@@ -91,10 +99,9 @@ class GoogleSheetManager:
             body=body_kl
         ).execute()
 
-        range_n = f"'{sheet_name}'!N{row_index}"
+        range_n = f"'{target_sheet_name}'!N{row_index}"
         body_n = {"values": [[status]]}
         
-        # Cập nhật Status (N)
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=range_n,
@@ -102,4 +109,4 @@ class GoogleSheetManager:
             body=body_n
         ).execute()
         
-        logger.info(f"✅ Sheet row {row_index} in '{sheet_name}' updated successfully.")
+        logger.info(f"✅ Sheet row {row_index} in '{target_sheet_name}' updated successfully.")
