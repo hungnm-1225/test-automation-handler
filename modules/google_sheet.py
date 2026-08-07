@@ -14,12 +14,12 @@ SCOPES = [
 def get_google_credentials():
     creds_json_str = os.getenv("GOOGLE_CREDENTIALS_JSON")
     if not creds_json_str:
-        raise ValueError("❌ THIẾU CẤU HÌNH: GOOGLE_CREDENTIALS_JSON!")
+        raise ValueError("❌ THIẾU CẤU HÌNH: Không tìm thấy biến môi trường GOOGLE_CREDENTIALS_JSON trên Render!")
     try:
         info = json.loads(creds_json_str)
         return Credentials.from_service_account_info(info, scopes=SCOPES)
     except Exception as e:
-        raise ValueError(f"❌ Lỗi định dạng JSON trong GOOGLE_CREDENTIALS_JSON: {e}")
+        raise ValueError(f"❌ Lỗi định dạng JSON trong biến GOOGLE_CREDENTIALS_JSON: {e}")
 
 class GoogleSheetManager:
     def __init__(self, spreadsheet_id: str = None, *args, **kwargs):
@@ -61,12 +61,14 @@ class GoogleSheetManager:
 
             submitter = get_col(3)     # Cột D (Submitter Name)
             subject = get_col(4)       # Cột E (Subject)
+            email = get_col(5)         # Cột F (Email)
+            doc_url = get_col(6)       # Cột G (Report GoogleDoc)
             fb_id = get_col(8)         # Cột I (FB ID)
             category = get_col(11)     # Cột L (CATEGORY)
             assigned_cb = get_col(12)  # Cột M (Assigned Checkbox)
             status = get_col(15)       # Cột P (STATUS)
 
-            # Chỉ lọc dòng chưa tick [x] Assigned
+            # Lọc: Chỉ xử lý nếu Cột M (Assigned) CHƯA được tick [x]
             if assigned_cb.upper() != "TRUE" and (submitter or subject or fb_id):
                 unprocessed.append({
                     "row_index": index,
@@ -75,23 +77,22 @@ class GoogleSheetManager:
                     "country": get_col(2),
                     "submitter": submitter,
                     "subject": subject,
-                    "doc_url": get_col(6),   # Cột G
-                    "remarks": get_col(7),   # Cột H
+                    "email": email,
+                    "doc_url": doc_url,
+                    "remarks": get_col(7),
                     "fb_id": fb_id if fb_id else f"FB-AUTO-{index}",
                     "category": category,
                     "status": status
                 })
         return unprocessed
 
-    def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str, *args, **kwargs):
-        """
-        Cập nhật Cột L (Category), Cột M (Assigned = True), Cột P (Status)
-        """
+    def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str = "To Implement", *args, **kwargs):
         target_sheet_name = self._get_valid_sheet_name(sheet_name)
 
-        # 1. Cập nhật Cột L (CATEGORY) & Cột M (Assigned Checkbox = TRUE)
+        # 1. Cập nhật Cột L (CATEGORY) và Cột M (Assigned Checkbox = TRUE)
         range_lm = f"'{target_sheet_name}'!L{row_index}:M{row_index}"
         body_lm = {"values": [[category, True]]}
+        
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=range_lm,
@@ -102,6 +103,7 @@ class GoogleSheetManager:
         # 2. Cập nhật Cột P (STATUS)
         range_p = f"'{target_sheet_name}'!P{row_index}"
         body_p = {"values": [[status]]}
+        
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=range_p,
@@ -109,4 +111,4 @@ class GoogleSheetManager:
             body=body_p
         ).execute()
         
-        logger.info(f"✅ Đã ghi Sheet Row {row_index}: Category={category}, Assigned=TRUE, Status(Col P)={status}")
+        logger.info(f"✅ Updated Row {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE, Status={status} (Cột P)")
