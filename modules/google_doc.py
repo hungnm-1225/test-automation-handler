@@ -1,15 +1,28 @@
-import re
-import logging
+import os
+import json
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
-logger = logging.getLogger(__name__)
 
 SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/documents.readonly',
     'https://www.googleapis.com/auth/drive'
 ]
+
+def load_credentials():
+    # 1. Ưu tiên đọc từ biến môi trường Render (dạng chuỗi JSON)
+    creds_json_str = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if creds_json_str:
+        try:
+            info = json.loads(creds_json_str)
+            return Credentials.from_service_account_info(info, scopes=SCOPES)
+        except Exception as e:
+            print(f"Lỗi parse GOOGLE_CREDENTIALS_JSON: {e}")
+
+    # 2. Dự phòng nếu chạy thử dưới Local có file credentials.json
+    if os.path.exists("credentials.json"):
+        return Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+
+    raise ValueError("❌ KHÔNG TÌM THẤY GOOGLE CREDENTIALS TRÊN RENDER HOẶC FILE LOCAL!")
 
 class GoogleDocManager:
     def __init__(self, creds_path: str = "credentials.json"):
