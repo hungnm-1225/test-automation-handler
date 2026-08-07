@@ -24,32 +24,30 @@ class AIEngine:
 
     def analyze_feedback(self, subject: str, remarks: str, doc_content: str, country: str) -> dict:
         prompt = f"""
-Bạn là trợ lý AI phân loại ticket hỗ trợ. Hãy phân tích:
+Bạn là trợ lý AI chuyên phân loại ticket hỗ trợ. Hãy phân tích thông tin sau:
 
 [THÔNG TIN FEEDBACK]
 - Quốc gia: {country}
-- Tiêu đề: {subject}
-- Ghi chú: {remarks}
+- Tiêu đề (Subject): {subject}
+- Ghi chú (Remarks): {remarks}
 - Nội dung file Doc đính kèm: {doc_content if doc_content else "Không có file Doc."}
 
 [KNOWLEDGE BASE]
-Categories: {json.dumps(self.kb['categories'])}
-Team Members: {json.dumps(self.kb['team_members'], ensure_ascii=False)}
+Danh mục hợp lệ (Category): {json.dumps(self.kb['categories'])}
+Danh sách nhân sự (Team): {json.dumps(self.kb['team_members'], ensure_ascii=False)}
+Mặc định Assignee: {json.dumps(self.kb['default_assignee'], ensure_ascii=False)}
 
-YÊU CẦU TRẢ VỀ JSON:
-1. "category": Chọn 1 Category phù hợp nhất từ danh sách trên.
-2. "assigned_name": Tên nhân sự phù hợp.
-3. "assigned_email": Email nhân sự phù hợp.
-4. "summary_vi": Tóm tắt ngắn gọn 2 câu bằng TIẾNG VIỆT (Dùng gửi Telegram).
-5. "summary_en": Brief 2-sentence summary strictly in ENGLISH (Used for Google Doc comment).
+[QUY TẮC GÁN NGƯỜI PHỤ TRÁCH]
+1. Nếu vấn đề khớp rõ ràng với từ khóa/vaitro của từng nhân sự, hãy gán cho nhân sự đó.
+2. Nếu vấn đề thuộc dạng chung chung, không rõ ràng, thuộc category 'other' hoặc không khớp cụ thể với nhân sự nào, MẶC ĐỊNH gán cho Administrator: Hung Nguyen (email: hung.nguyenmanh@dtt.vn).
 
-Trả về duy nhất 1 JSON Object:
+Hãy phân loại và trả về duy nhất JSON object theo cấu trúc:
 {{
-    "category": "...",
-    "assigned_name": "...",
-    "assigned_email": "...",
-    "summary_vi": "...",
-    "summary_en": "..."
+    "category": "Chọn 1 Category phù hợp nhất",
+    "assigned_name": "Tên người phụ trách",
+    "assigned_email": "Email người phụ trách",
+    "summary_vi": "Tóm tắt ngắn 2 câu bằng tiếng Việt cho Telegram.",
+    "summary_en": "Short 2-sentence summary in English for Google Doc comment."
 }}
 """
         for model_name in GEMINI_MODELS:
@@ -65,11 +63,11 @@ Trả về duy nhất 1 JSON Object:
                     continue
                 continue
 
-        default_person = self.kb.get("default_assignee", {"name": "Bryan", "email": "bryan@example.com"})
+        default_person = self.kb.get("default_assignee", {"name": "Hung Nguyen", "email": "hung.nguyenmanh@dtt.vn"})
         return {
             "category": "other",
             "assigned_name": default_person["name"],
             "assigned_email": default_person["email"],
-            "summary_vi": f"Tóm tắt tự động: {subject}",
-            "summary_en": f"Automated summary: {subject}"
+            "summary_vi": f"Tiêu đề: {subject}",
+            "summary_en": f"Subject: {subject}"
         }
