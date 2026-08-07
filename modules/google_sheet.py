@@ -59,31 +59,33 @@ class GoogleSheetManager:
             def get_col(idx):
                 return row[idx].strip() if idx < len(row) else ""
 
-            submitter = get_col(3)     # Cột D (Submitter Name)
-            subject = get_col(5)       # Cột E (Subject)
-            # email = get_col(5)         # Cột F (Email)
-            doc_url = get_col(6)       # Cột G (Report GoogleDoc)
+            country = get_col(2)       # Cột C (COUNTRY)
+            submitter = get_col(3)     # Cột D (SUBMITTER NAME)
+            subject = get_col(5)       # Cột F (SUBJECT)
+            doc_url = get_col(6)       # Cột G (REPORT GoogleDoc)
+            remarks = get_col(7)       # Cột H (REMARKS)
             fb_id = get_col(8)         # Cột I (FB ID)
             category = get_col(11)     # Cột L (CATEGORY)
             assigned_cb = get_col(12)  # Cột M (Assigned Checkbox)
             status = get_col(15)       # Cột P (STATUS)
 
-            # Lọc: Chỉ xử lý nếu Cột M (Assigned) CHƯA được tick [x]
+            # LỌC CÁC DÒNG CHƯA TICK ASSIGNED TRÊN CỘT M
             if assigned_cb.upper() != "TRUE" and (submitter or subject or fb_id):
+                logger.info(f"📌 Phát hiện Ticket CHƯA XỬ LÝ ở dòng {index} [{fb_id or subject}]")
                 unprocessed.append({
                     "row_index": index,
                     "sheet_name": target_sheet_name,
                     "timestamp": get_col(0),
-                    "country": get_col(2),
+                    "country": country,
                     "submitter": submitter,
                     "subject": subject,
-                    # "email": email,
                     "doc_url": doc_url,
-                    "remarks": get_col(7),
+                    "remarks": remarks,
                     "fb_id": fb_id if fb_id else f"FB-AUTO-{index}",
                     "category": category,
                     "status": status
                 })
+
         return unprocessed
 
     def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str = "To Implement", *args, **kwargs):
@@ -111,4 +113,4 @@ class GoogleSheetManager:
             body=body_p
         ).execute()
         
-        logger.info(f"✅ Updated Row {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE, Status={status} (Cột P)")
+        logger.info(f"✅ Đã cập nhật dòng {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE (Cột M), Status={status} (Cột P)")
