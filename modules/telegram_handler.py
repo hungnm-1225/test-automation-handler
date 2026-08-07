@@ -29,7 +29,6 @@ class TelegramBotHandler:
         msg = (
             f"📥 **FEEDBACK MỚI CẦN XỬ LÝ [{fb_id}]**\n\n"
             f"👤 **Người gửi:** {task_data['submitter']} ({task_data['country']})\n"
-            f"✉️ **Email:** `{task_data.get('email', 'N/A')}`\n"
             f"📌 **Tiêu đề:** {task_data['subject']}\n"
             f"📝 **Ghi chú:** {task_data['remarks']}\n\n"
             f"🤖 **AI ĐỀ XUẤT:**\n"
@@ -37,7 +36,7 @@ class TelegramBotHandler:
             f"• **Status (Cột P):** `To Implement` (Sẽ tự gán khi duyệt)\n"
             f"• **Người phụ trách:** {task_data['ai_res']['assigned_name']} ({task_data['ai_res']['assigned_email']})\n"
             f"💡 **Tóm tắt vấn đề:** {task_data['ai_res']['summary_vi']}\n\n"
-            f"📄 **Doc Link:** {task_data['doc_url']}"
+            f"📄 **Doc:** {task_data['doc_url']}"
         )
 
         keyboard = [
@@ -63,7 +62,7 @@ class TelegramBotHandler:
             f"🤖 **ĐÃ TỰ ĐỘNG CẬP NHẬT SHEET:**\n"
             f"• **Category:** `{task_data['ai_res']['category']}`\n"
             f"• **Assigned (Cột M):** `TRUE` (Đã tick)\n"
-            f"• **Status (Cột P):** `Non-Critical` (Đã gán)\n"
+            f"• **Status (Cột P):** `Non-Critical` (Đã đặt)\n"
             f"• **Người phụ trách:** {task_data['ai_res']['assigned_name']}\n"
             f"💡 **Tóm tắt:** {task_data['ai_res']['summary_vi']}"
         )
@@ -83,6 +82,9 @@ class TelegramBotHandler:
             f"⏸️ **Trạng thái:** Tạm thời bỏ qua ticket này (Giữ nguyên chưa tick Assigned, chưa đổi Status)."
         )
         await self.app.bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode="Markdown")
+
+    # Bí danh (Alias) giúp hỗ trợ cả 2 tên gọi hàm
+    send_permission_warning = send_restricted_doc_alert
 
     async def _button_click(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
