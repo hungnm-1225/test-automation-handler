@@ -1,57 +1,89 @@
-import os
-import json
-import requests
+import logging
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-class TelegramHandler:
-    def __init__(self, bot_token: str, chat_id: str):
-        self.bot_token = bot_token
-        self.chat_id = chat_id
-        self.api_url = f"https://api.telegram.org/bot{bot_token}"
+logger = logging.getLogger(__name__)
 
-def send_approval_card(self, row_data: dict, ai_analysis: dict):
-        # Lấy chính xác tên Model Gemini 3.x đã vừa xử lý thành công
-        model_name = ai_analysis.get('used_model', os.getenv('GEMINI_MODEL', 'gemini-3.6-flash'))
-        warning_text = f"\n⚠️ **CẢNH BÁO:** {ai_analysis.get('doc_warning')}" if ai_analysis.get('doc_warning') != "None" else ""
-        
-        message_text = f"""
-📥 **[FEEDBACK MỚI - #{row_data.get('fb_id')}]**
+class TelegramBotHandler:
+    def __init__(self, token: str, admin_chat_id: str, executor_callback):
+        self.token = token
+        self.admin_chat_id = admin_chat_id
+        self.executor_callback = executor_callback # Hàm xử lý khi người dùng ấn nút Đồng ý
+        self.pending_tasks = {} # Lưu trữ các ticket đang chờ duyệt trong bộ nhớ
+        self.app = Application.builder().token(token).build()
+        self._setup_handlers()
 
-👤 **Người gửi:** {row_data.get('submitter')} ({row_data.get('country')})
-📌 **Tiêu đề:** {row_data.get('subject')}
-📝 **Ghi chú:** {row_data.get('remarks') or 'Không có'}
-📄 **Google Doc:** [Mở Document]({row_data.get('doc_link')}){warning_text}
+    def _setup_handlers(self):
+        self.app.add_handler(CommandHandler("start", self._start_command))
+        self.app.add_handler(CallbackQueryHandler(self._button_click))
 
----
-🧠 **AI TÓM TẮT DỮ LIỆU ({model_name}):**
-• {ai_analysis.get('summary')}
+    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("🤖 Bot PTV Feedback Automation đã sẵn sàng hoạt động!")
 
-🎯 **AI ĐỀ XUẤT:**
-• **Category:** `{ai_analysis.get('category')}`
-• **Phân công:** {ai_analysis.get('suggested_assignee_name')} (`{ai_analysis.get('suggested_assignee_email')}`)
-
-👇 **ANH HÙNG NGUYỄN MẠNH BẤM DUYỆT BÊN DƯỚI:**
+    async def send_approval_request(self, task_data: dict):
         """
+        Gửi thông báo đề xuất cho Admin kèm Inline Buttons
+        """
+        fb_id = task_data['fb_id']
+        self.pending_tasks[fb_id] = task_data
 
-        row_num = row_data.get('row_number')
-        cat = ai_analysis.get('category')
-        email = ai_analysis.get('suggested_assignee_email')
-        doc_url = row_data.get('doc_link', '')
+        msg = (
+            f"📥 **FEEDBACK MỚI CẦN XỬ LÝ [{fb_id}]**\n\n"
+            f"👤 **Người gửi:** {task_data['submitter']} ({task_data['country']})\n"
+            f"📌 **Tiêu đề:** {task_data['subject']}\n"
+            f"📝 **Ghi chú:** {task_data['remarks']}\n\n"
+            f"🤖 **AI ĐỀ XUẤT:**\n"
+            f"• **Category:** `{task_data['ai_res']['category']}`\n"
+            f"• **Status:** `{task_data['ai_res']['status']}`\n"
+            f"• **Người phụ trách:** {task_data['ai_res']['assigned_name']} ({task_data['ai_res']['assigned_email']})\n"
+            f"💡 **Tóm tắt vấn đề:** {task_data['ai_res']['summary']}\n\n"
+            f"📄 **Doc:** {task_data['doc_url'] if task_data['doc_url'] else 'Không có'}"
+        )
 
-        keyboard = {
-            "inline_keyboard": [
-                [{"text": f"✅ Duyệt & Tag {ai_analysis.get('suggested_assignee_name')}", "callback_data": f"approve|{row_num}|{cat}|{email}|{doc_url}"}],
-                [
-                    {"text": "👤 Tag Quang Định", "callback_data": f"approve|{row_num}|Software|quang.dinh@dtt.vn|{doc_url}"},
-                    {"text": "👤 Tag Linh Đặng", "callback_data": f"approve|{row_num}|Content|linh.dang.edu@dtt.vn|{doc_url}"}
-                ]
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Đồng ý & Thực thi", callback_data=f"approve_{fb_id}"),
+                InlineKeyboardButton("❌ Bỏ qua", callback_data=f"reject_{fb_id}")
             ]
-        }
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-        payload = {
-            "chat_id": self.chat_id,
-            "text": message_text,
-            "parse_mode": "Markdown",
-            "reply_markup": json.dumps(keyboard)
-        }
-        res = requests.post(f"{self.api_url}/sendMessage", json=payload)
-        return res.json()
+        await self.app.bot.send_message(
+            chat_id=self.admin_chat_id,
+            text=msg,
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+
+    async def _button_click(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+        action, fb_id = data.split("_", 1)
+
+        if fb_id not in self.pending_tasks:
+            await query.edit_message_text("⚠️ Yêu cầu này đã xử lý hoặc hết hạn trong bộ nhớ tạm.")
+            return
+
+        task = self.pending_tasks[fb_id]
+
+        if action == "approve":
+            await query.edit_message_text(f"⏳ Đang thực thi gán dữ liệu vào Sheet & Doc cho `{fb_id}`...")
+            # Gọi callback thực thi chính
+            success, detail = await self.executor_callback(task)
+            if success:
+                await query.edit_message_text(
+                    f"✅ **ĐÃ XỬ LÝ THÀNH CÔNG [{fb_id}]**\n\n"
+                    f"• Cập nhật Sheet: Thành công\n"
+                    f"• Comment Google Doc: {detail}"
+                )
+            else:
+                await query.edit_message_text(
+                    f"⚠️ **XỬ LÝ THẤT BẠI MOT PHẦN [{fb_id}]**\n\nChi tiết: {detail}"
+                )
+            del self.pending_tasks[fb_id]
+
+        elif action == "reject":
+            await query.edit_message_text(f"🚫 Đã bỏ qua feedback [{fb_id}].")
+            del self.pending_tasks[fb_id]
