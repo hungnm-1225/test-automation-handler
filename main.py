@@ -1,3 +1,4 @@
+import gc
 import os
 import logging
 import threading
@@ -5,6 +6,7 @@ import asyncio
 from flask import Flask
 from dotenv import load_dotenv
 from telegram.ext import ContextTypes
+
 
 from modules.google_sheet import GoogleSheetManager
 from modules.google_doc import GoogleDocManager
@@ -83,6 +85,8 @@ async def scan_job_callback(context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Lỗi trong quá trình quét tự động: {e}")
+    finally:
+        gc.collect()
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
