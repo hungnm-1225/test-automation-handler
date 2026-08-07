@@ -1,27 +1,28 @@
 {
-  "system_name": "PTV Taskforce Support System",
+  "system_info": "Hệ thống hỗ trợ PTV Taskforce - Tự động phân loại và phân công ticket hỗ trợ.",
+  "categories": ["Hardware", "Software", "Content", "Account", "Operations", "other"],
+  "statuses": ["Critical", "Non-Critical", "To Implement", "Backlog", "Resolved", "Closed"],
   "team_members": [
     {
-      "id": "quang_dinh",
-      "name": "Quang Định",
-      "email": "hungnm.1225@gmail.com",
-      "role": "LMS & eCertificate Specialist",
-      "categories": ["Software", "eCertificate", "PLearn"]
+      "name": "Linh Đặng Thủy",
+      "email": "linh.dt@dummy.xyz",
+      "expertise": ["E-certificate", "QR Code", "Curriculum", "SWRP Courses"]
     },
     {
-      "id": "linh_dang",
-      "name": "Linh Đặng Thùy",
-      "email": "hung.nguyenmanh@dtt.vn",
-      "role": "Content Lead",
-      "categories": ["Content", "Curriculum"]
+      "name": "Bryan",
+      "email": "bryan@dummy.xyz",
+      "expertise": ["AIROC website", "Leanbot", "Reseller demo", "Software general"]
     },
     {
-      "id": "trinh_bach_to",
-      "name": "Trịnh Bạch Tố",
-      "email": "Truyvanlangkhach2512@gmail.com",
-      "role": "System Administrator",
-      "categories": ["Account", "Workspace", "PGit"]
+      "name": "Afiq",
+      "email": "afiq@dummy.xyz",
+      "expertise": ["IDE Bluetooth", "Hostel students login", "Hardware & Connection"]
+    },
+    {
+      "name": "Jezer Diaz",
+      "email": "jezer@dummy.xyz",
+      "expertise": ["Support Ticket Inaccessible", "PGIT Access", "Account Creation", "Workspace"]
     }
   ],
-  "categories": ["Account", "Software", "Content", "other"]
+  "routing_rules": "Ưu tiên phân loại chính xác dựa theo tiêu đề và nội dung Doc. Nếu gặp vấn đề tài khoản hãy gán cho Jezer Diaz hoặc Linh Đặng Thủy. Lỗi kết nối Bluetooth/Thiết bị gán cho Afiq. Lỗi phần mềm chung gán cho Bryan."
 }
