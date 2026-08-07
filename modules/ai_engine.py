@@ -1,87 +1,85 @@
 import json
-import time
-from google import genai
-from google.genai import types
+import logging
+import google.generativeai as genai
+
+logger = logging.getLogger(__name__)
+
+# Danh sách Model ưu tiên giảm dần theo yêu cầu
+GEMINI_MODELS = [
+    "gemini-3.6-flash",
+"gemini-3.5-flash-lite",
+"gemini-3.5-flash",
+"gemini-3.1-flash-lite",
+"gemini-3.1-pro-preview",
+"gemini-3-flash-preview",
+"gemini-pro-latest",
+"gemini-flash-latest",
+"gemini-flash-lite-latest"
+]
 
 class AIEngine:
-    def __init__(self, api_key: str, knowledge_base: dict):
-        self.client = genai.Client(api_key=api_key)
-        self.kb = knowledge_base
-        # Danh sách các Model Gemini ưu tiên từ cao xuống thấp (dùng bản 3 trở lên)
-        self.models_priority = [
-            "gemini-3.6-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-3.1-pro-preview",
-            "gemini-3-flash-preview",
-            "gemini-pro-latest",
-            "gemini-flash-latest",
-            "gemini-flash-lite-latest"
-        ]
+    def __init__(self, api_key: str, knowledge_base_path: str = "brain/knowledge_base.json"):
+        genai.configure(api_key=api_key)
+        with open(knowledge_base_path, 'r', encoding='utf-8') as f:
+            self.kb = json.load(f)
 
-    def analyze_feedback(self, subject: str, remarks: str, doc_content: str) -> dict:
-        """Sử dụng Gemini phân tích dữ liệu, tự động switch model khi dính lỗi 429 Quota Exceed"""
-        
-        system_instruction = f"""
-        Bạn là Chuyên gia AI phân loại Feedback. 
-        Bộ não tri thức (Knowledge Base): {json.dumps(self.kb, ensure_ascii=False)}
-        
-        Nhiệm vụ:
-        1. Tóm tắt ngắn gọn sự cố/góp ý của người dùng.
-        2. Chọn CATEGORY phù hợp nhất từ danh sách: {self.kb.get('categories')}.
-        3. Chọn STATUS ban đầu từ danh sách: {self.kb.get('statuses')}.
-        4. Chọn Nhân sự phụ trách (Assigned) từ danh sách 'team_members' dựa vào kinh nghiệm/lĩnh vực.
-        
-        Trả về kết quả ĐÚNG ĐỊNH DẠNG JSON duy nhất như sau (không kèm markdown dư thừa):
-        {{
-            "summary": "Tóm tắt vấn đề ngắn gọn...",
-            "category": "Software",
-            "assigned_name": "Bryan",
-            "assigned_email": "bryan@pythaverse.space",
-            "status": "To Implement",
-            "reasoning": "Lý do lựa chọn ngắn gọn"
-        }}
-        """
+    def analyze_feedback(self, subject: str, remarks: str, doc_content: str, country: str) -> dict:
+        prompt = f"""
+Bạn là trợ lý AI chuyên phân loại ticket hỗ trợ. Hãy phân tích thông tin sau:
 
-        user_prompt = f"""
-        - Tiêu đề (Subject): {subject}
-        - Remarks: {remarks}
-        - Nội dung chi tiết trong Google Doc: {doc_content}
-        """
+[THÔNG TIN FEEDBACK]
+- Quốc gia: {country}
+- Tiêu đề (Subject): {subject}
+- Ghi chú (Remarks): {remarks}
+- Nội dung file Doc đính kèm: {doc_content if doc_content else "Không đọc được hoặc không có file Doc."}
 
-        for model_name in self.models_priority:
-            for attempt in range(2):  # Thử lại 2 lần mỗi model
-                try:
-                    response = self.client.models.generate_content(
-                        model=model_name,
-                        contents=user_prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            response_mime_type="application/json",
-                            temperature=0.2
-                        )
-                    )
-                    
-                    data = json.loads(response.text)
-                    data["model_used"] = model_name
-                    return data
+[BỘ NÃO BẬC THẦY - KNOWLEDGE BASE]
+Danh mục hợp lệ (Category): {json.dumps(self.kb['categories'])}
+Trạng thái hợp lệ (Status): {json.dumps(self.kb['statuses'])}
+Danh sách nhân sự (Team): {json.dumps(self.kb['team_members'], ensure_ascii=False)}
 
-                except Exception as e:
-                    error_str = str(e)
-                    if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                        print(f"[AI Warning] Model {model_name} bị dính 429 Quota Exceed. Đang thử lại hoặc switch model...")
-                        time.sleep(2)  # Nghỉ 2s rồi thử tiếp
-                    else:
-                        print(f"[AI Error] Lỗi khi gọi model {model_name}: {e}")
-                        break # Chuyển sang model tiếp theo
-                        
-        # Trường hợp tất cả model đều thất bại (Fallback an toàn)
+[YÊU CẦU LƯU Ý DỮ LIỆU CỘT]
+1. Chọn 1 Category phù hợp nhất trong danh mục trên.
+2. Chọn 1 Status đề xuất (Ví dụ: "To Implement", "Critical", "Non-Critical", "Backlog").
+3. Gán người chịu trách nhiệm (Assigned) dựa trên từ khóa bài toán và kỹ năng nhân sự. Trả về đúng `name` và `email`.
+
+Hãy trả về duy nhất một chuỗi JSON chuẩn (JSON object) không kèm markdown format khác, theo cấu trúc:
+{{
+    "category": "...",
+    "status": "...",
+    "assigned_name": "...",
+    "assigned_email": "...",
+    "summary": "Tóm tắt ngắn gọn 2-3 câu về cốt lõi vấn đề người dùng gặp phải."
+}}
+"""
+        # Cơ chế Switch Model tự động khi gặp lỗi 429 (Quota Exceeded)
+        for model_name in GEMINI_MODELS:
+            try:
+                logger.info(f"🤖 Đang gửi request tới Gemini Model: {model_name}")
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                
+                res_json = json.loads(response.text)
+                return res_json
+            except Exception as e:
+                err_msg = str(e)
+                if "429" in err_msg or "quota" in err_msg.lower():
+                    logger.warning(f"⚠️ Model {model_name} bị tràn Quota (429). Đang đổi sang model tiếp theo...")
+                    continue
+                else:
+                    logger.error(f"❌ Lỗi với model {model_name}: {err_msg}")
+                    continue
+
+        # Fallback nếu tất cả model đều lỗi
+        logger.error("❌ Tất cả Gemini Models đều quá tải hoặc lỗi!")
+        default_person = self.kb.get("default_assignee", {"name": "Bryan", "email": "bryan@example.com"})
         return {
-            "summary": "Không thể phân tích bằng AI do nghẽn API Quota.",
             "category": "other",
-            "assigned_name": "Linh Đặng Thủy",
-            "assigned_email": "linh.dt@pythaverse.space",
-            "status": "Backlog",
-            "reasoning": "Fallback do lỗi Quota API Gemini"
+            "status": "To Implement",
+            "assigned_name": default_person["name"],
+            "assigned_email": default_person["email"],
+            "summary": f"Tự động phân loại thất bại do AI Quota. Tiêu đề: {subject}"
         }
