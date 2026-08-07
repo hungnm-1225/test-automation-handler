@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 logger = logging.getLogger(__name__)
+self.service = build('sheets', 'v4', credentials=self.creds, cache_discovery=False)
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
