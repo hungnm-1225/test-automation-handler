@@ -24,16 +24,17 @@ def get_google_credentials():
 
 class GoogleSheetManager:
     def __init__(self, spreadsheet_id: str = None, *args, **kwargs):
-        # Linh hoạt lấy spreadsheet_id truyền vào hoặc đọc từ Env
         self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID")
         self.creds = get_google_credentials()
         self.service = build('sheets', 'v4', credentials=self.creds)
 
     def get_unprocessed_rows(self, sheet_name: str = "Feedbacks", *args, **kwargs):
-        # Tự động quét và tìm đúng tên Tab thực tế trên Sheet của anh
-        spreadsheet_info = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
-        sheets = spreadsheet_info.get('sheets', [])
+        # 1. Lấy thông tin các Tab (dùng spreadsheetId chuẩn Google API)
+        spreadsheet_info = self.service.spreadsheets().get(
+            spreadsheetId=self.spreadsheet_id
+        ).execute()
         
+        sheets = spreadsheet_info.get('sheets', [])
         sheet_names = [s['properties']['title'] for s in sheets]
         target_sheet_name = sheet_name
         
@@ -42,8 +43,10 @@ class GoogleSheetManager:
             logger.info(f"Dùng tab '{target_sheet_name}' để đọc dữ liệu.")
 
         range_name = f"'{target_sheet_name}'!A2:N"
+        
+        # 2. Đọc dữ liệu (Đã sửa chữ I viết hoa: spreadsheetId)
         result = self.service.spreadsheets().values().get(
-            spreadsheet_id=self.spreadsheet_id,
+            spreadsheetId=self.spreadsheet_id,
             range=range_name
         ).execute()
         
@@ -59,6 +62,7 @@ class GoogleSheetManager:
             assigned_cb = get_col(11) # Cột L (Index 11)
             status = get_col(13)      # Cột N (Index 13)
 
+            # Nếu chưa tick Checkbox L hoặc Category/Status trống
             if assigned_cb.upper() != "TRUE" or not category or not status:
                 unprocessed.append({
                     "row_index": index,
@@ -78,8 +82,10 @@ class GoogleSheetManager:
     def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str, *args, **kwargs):
         range_kl = f"'{sheet_name}'!K{row_index}:L{row_index}"
         body_kl = {"values": [[category, True]]}
+        
+        # Cập nhật Category (K) & Checkbox Assigned (L)
         self.service.spreadsheets().values().update(
-            spreadsheet_id=self.spreadsheet_id,
+            spreadsheetId=self.spreadsheet_id,
             range=range_kl,
             valueInputOption="USER_ENTERED",
             body=body_kl
@@ -87,11 +93,13 @@ class GoogleSheetManager:
 
         range_n = f"'{sheet_name}'!N{row_index}"
         body_n = {"values": [[status]]}
+        
+        # Cập nhật Status (N)
         self.service.spreadsheets().values().update(
-            spreadsheet_id=self.spreadsheet_id,
+            spreadsheetId=self.spreadsheet_id,
             range=range_n,
             valueInputOption="USER_ENTERED",
             body=body_n
         ).execute()
         
-        logger.info(f"✅ Sheet row {row_index} updated successfully.")
+        logger.info(f"✅ Sheet row {row_index} in '{sheet_name}' updated successfully.")
