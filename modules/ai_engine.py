@@ -1,79 +1,87 @@
 import json
-import os
-import google.generativeai as genai
+import time
+from google import genai
+from google.genai import types
 
 class AIEngine:
-    def __init__(self, api_key: str, knowledge_base_path: str = 'brain/knowledge_base.json'):
-        genai.configure(api_key=api_key)
-        
-        # Danh sách ưu tiên dàn Model Gemini 3.x (Tự động Fallback khi bị 429)
-        self.models_cascade = [
-            os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+    def __init__(self, api_key: str, knowledge_base: dict):
+        self.client = genai.Client(api_key=api_key)
+        self.kb = knowledge_base
+        # Danh sách các Model Gemini ưu tiên từ cao xuống thấp (dùng bản 3 trở lên)
+        self.models_priority = [
+            "gemini-3.6-flash",
             "gemini-3.5-flash-lite",
             "gemini-3.5-flash",
             "gemini-3.1-flash-lite",
-            "gemini-3-flash-preview"
+            "gemini-3.1-pro-preview",
+            "gemini-3-flash-preview",
+            "gemini-pro-latest",
+            "gemini-flash-latest",
+            "gemini-flash-lite-latest"
         ]
-        # Loại bỏ trùng lặp nếu GEMINI_MODEL đã trùng
-        self.models_cascade = list(dict.fromkeys(self.models_cascade))
+
+    def analyze_feedback(self, subject: str, remarks: str, doc_content: str) -> dict:
+        """Sử dụng Gemini phân tích dữ liệu, tự động switch model khi dính lỗi 429 Quota Exceed"""
         
-        with open(knowledge_base_path, 'r', encoding='utf-8') as f:
-            self.kb = json.load(f)
-
-    def analyze_and_summarize(self, feedback_data: dict, doc_data: dict) -> dict:
-        prompt = f"""
-        Bạn là Chuyên gia AI Triage quản lý hệ thống PTV Taskforce Support.
-        Hãy đọc thông tin Feedback và nội dung chi tiết trong Google Doc để phân loại & tóm tắt.
-
-        KNOWLEDGE BASE:
-        {json.dumps(self.kb, ensure_ascii=False)}
-
-        ĐẦU VÀO FORM:
-        - Submitter: {feedback_data.get('submitter')} ({feedback_data.get('country')})
-        - Subject: {feedback_data.get('subject')}
-        - Remarks: {feedback_data.get('remarks')}
-
-        NỘI DUNG ĐỌC TỪ GOOGLE DOC:
-        - Trạng thái Doc: {doc_data.get('status')}
-        - Tiêu đề Doc: {doc_data.get('doc_title', 'N/A')}
-        - Nội dung Doc: {doc_data.get('content', 'Không thể đọc nội dung')}
-
-        YÊU CẦU ĐẦU RA (Trả về định dạng JSON thuần túy, không chứa mã ```json):
+        system_instruction = f"""
+        Bạn là Chuyên gia AI phân loại Feedback. 
+        Bộ não tri thức (Knowledge Base): {json.dumps(self.kb, ensure_ascii=False)}
+        
+        Nhiệm vụ:
+        1. Tóm tắt ngắn gọn sự cố/góp ý của người dùng.
+        2. Chọn CATEGORY phù hợp nhất từ danh sách: {self.kb.get('categories')}.
+        3. Chọn STATUS ban đầu từ danh sách: {self.kb.get('statuses')}.
+        4. Chọn Nhân sự phụ trách (Assigned) từ danh sách 'team_members' dựa vào kinh nghiệm/lĩnh vực.
+        
+        Trả về kết quả ĐÚNG ĐỊNH DẠNG JSON duy nhất như sau (không kèm markdown dư thừa):
         {{
-            "summary": "Tóm tắt bản chất lỗi/yêu cầu trong 2-3 câu ngắn gọn",
-            "category": "Chọn 1 trong các nhóm: Account, Software, Content, other",
-            "suggested_assignee_name": "Tên nhân sự được đề xuất từ Knowledge Base",
-            "suggested_assignee_email": "Email của nhân sự được đề xuất",
-            "priority": "Normal hoặc Urgent",
-            "doc_warning": "{doc_data.get('warning', 'None')}"
+            "summary": "Tóm tắt vấn đề ngắn gọn...",
+            "category": "Software",
+            "assigned_name": "Bryan",
+            "assigned_email": "bryan@pythaverse.space",
+            "status": "To Implement",
+            "reasoning": "Lý do lựa chọn ngắn gọn"
         }}
         """
 
-        last_error = None
-        # VÒNG LẶP THỬ LẦN LƯỢT DÀN MODEL GEMINI 3.X
-        for model_name in self.models_cascade:
-            try:
-                print(f"🧠 Đang gọi AI với Model: {model_name}...")
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(prompt)
-                
-                clean_text = response.text.replace("```json", "").replace("```", "").strip()
-                result = json.loads(clean_text)
-                result["used_model"] = model_name # Ghi nhận tên Model đã xử lý thành công
-                print(f"✅ AI xử lý thành công bằng Model: {model_name}")
-                return result
+        user_prompt = f"""
+        - Tiêu đề (Subject): {subject}
+        - Remarks: {remarks}
+        - Nội dung chi tiết trong Google Doc: {doc_content}
+        """
 
-            except Exception as e:
-                last_error = str(e)
-                print(f"⚠️ Model {model_name} bị nghẽn/hết Quota (Lỗi: {e}). Đang tự động chuyển sang Model 3.x tiếp theo...")
-                continue
+        for model_name in self.models_priority:
+            for attempt in range(2):  # Thử lại 2 lần mỗi model
+                try:
+                    response = self.client.models.generate_content(
+                        model=model_name,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            response_mime_type="application/json",
+                            temperature=0.2
+                        )
+                    )
+                    
+                    data = json.loads(response.text)
+                    data["model_used"] = model_name
+                    return data
 
+                except Exception as e:
+                    error_str = str(e)
+                    if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                        print(f"[AI Warning] Model {model_name} bị dính 429 Quota Exceed. Đang thử lại hoặc switch model...")
+                        time.sleep(2)  # Nghỉ 2s rồi thử tiếp
+                    else:
+                        print(f"[AI Error] Lỗi khi gọi model {model_name}: {e}")
+                        break # Chuyển sang model tiếp theo
+                        
+        # Trường hợp tất cả model đều thất bại (Fallback an toàn)
         return {
-            "summary": f"Chưa thể tóm tắt do tất cả Dàn Model Gemini 3.x đều hết Quota ({last_error})",
+            "summary": "Không thể phân tích bằng AI do nghẽn API Quota.",
             "category": "other",
-            "suggested_assignee_name": "Anh Hùng Nguyễn Mạnh",
-            "suggested_assignee_email": "hung.nguyenmanh@dtt.vn",
-            "priority": "Normal",
-            "doc_warning": doc_data.get('warning', 'None'),
-            "used_model": "None (Quota Full)"
+            "assigned_name": "Linh Đặng Thủy",
+            "assigned_email": "linh.dt@pythaverse.space",
+            "status": "Backlog",
+            "reasoning": "Fallback do lỗi Quota API Gemini"
         }
