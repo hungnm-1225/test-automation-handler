@@ -60,8 +60,8 @@ class GoogleSheetManager:
                 return row[idx].strip() if idx < len(row) else ""
 
             submitter = get_col(3)     # Cột D (Submitter Name)
-            subject = get_col(4)       # Cột E (Subject)
-            email = get_col(5)         # Cột F (Email)
+            subject = get_col(5)       # Cột E (Subject)
+            # email = get_col(5)         # Cột F (Email)
             doc_url = get_col(6)       # Cột G (Report GoogleDoc)
             fb_id = get_col(8)         # Cột I (FB ID)
             category = get_col(11)     # Cột L (CATEGORY)
@@ -77,7 +77,7 @@ class GoogleSheetManager:
                     "country": get_col(2),
                     "submitter": submitter,
                     "subject": subject,
-                    "email": email,
+                    # "email": email,
                     "doc_url": doc_url,
                     "remarks": get_col(7),
                     "fb_id": fb_id if fb_id else f"FB-AUTO-{index}",
