@@ -3,6 +3,12 @@
   "statuses": ["Critical", "Non-Critical", "To Implement", "Backlog", "Resolved", "Closed"],
   "team_members": [
     {
+      "name": "Hung Nguyen",
+      "email": "hung.nguyenmanh@dtt.vn",
+      "role": "Administrator / Overall Lead",
+      "keywords": ["general", "other", "admin", "system", "uncategorized", "default", "platform"]
+    },
+    {
       "name": "Jezer Diaz",
       "email": "jezer.diaz@example.com",
       "role": "Support / Software Specialist",
@@ -28,7 +34,7 @@
     }
   ],
   "default_assignee": {
-    "name": "Bryan",
-    "email": "bryan@example.com"
+    "name": "Hung Nguyen",
+    "email": "hung.nguyenmanh@dtt.vn"
   }
 }
