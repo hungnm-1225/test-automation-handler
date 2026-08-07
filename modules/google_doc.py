@@ -1,34 +1,32 @@
 import os
+import re
 import json
+import logging
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+logger = logging.getLogger(__name__)
+
 SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/documents.readonly',
     'https://www.googleapis.com/auth/drive'
 ]
 
-def load_credentials():
-    # 1. Ưu tiên đọc từ biến môi trường Render (dạng chuỗi JSON)
+def get_google_credentials():
     creds_json_str = os.getenv("GOOGLE_CREDENTIALS_JSON")
-    if creds_json_str:
-        try:
-            info = json.loads(creds_json_str)
-            return Credentials.from_service_account_info(info, scopes=SCOPES)
-        except Exception as e:
-            print(f"Lỗi parse GOOGLE_CREDENTIALS_JSON: {e}")
-
-    # 2. Dự phòng nếu chạy thử dưới Local có file credentials.json
-    if os.path.exists("credentials.json"):
-        return Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-
-    raise ValueError("❌ KHÔNG TÌM THẤY GOOGLE CREDENTIALS TRÊN RENDER HOẶC FILE LOCAL!")
+    if not creds_json_str:
+        raise ValueError("❌ THIẾU CẤU HÌNH: Không tìm thấy biến môi trường GOOGLE_CREDENTIALS_JSON trên Render!")
+    
+    try:
+        info = json.loads(creds_json_str)
+        return Credentials.from_service_account_info(info, scopes=SCOPES)
+    except Exception as e:
+        raise ValueError(f"❌ Lỗi định dạng JSON trong biến GOOGLE_CREDENTIALS_JSON: {e}")
 
 class GoogleDocManager:
-    def __init__(self, creds_path: str = "credentials.json"):
-        self.creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+    def __init__(self):
+        self.creds = get_google_credentials()
         self.docs_service = build('docs', 'v1', credentials=self.creds)
         self.drive_service = build('drive', 'v3', credentials=self.creds)
 
@@ -38,9 +36,6 @@ class GoogleDocManager:
         return match.group(1) if match else None
 
     def read_doc_content(self, doc_url: str) -> tuple[str, str]:
-        """
-        Trả về (content, error_flag). Lấy chữ trong file Google Doc.
-        """
         doc_id = self.extract_doc_id(doc_url)
         if not doc_id:
             return "", "URL_INVALID"
@@ -63,9 +58,6 @@ class GoogleDocManager:
             return "", str(e)
 
     def add_comment_and_tag(self, doc_url: str, comment_text: str, tag_email: str) -> tuple[bool, str]:
-        """
-        Thêm Comment và Tag email vào Google Doc thông qua Google Drive API v3
-        """
         doc_id = self.extract_doc_id(doc_url)
         if not doc_id:
             return False, "Đường dẫn Google Doc không hợp lệ."
@@ -73,10 +65,7 @@ class GoogleDocManager:
         full_comment = f"{comment_text}\n\nCc: +{tag_email}"
 
         try:
-            body = {
-                'content': full_comment
-            }
-            # Sử dụng Drive API v3
+            body = {'content': full_comment}
             self.drive_service.comments().create(
                 fileId=doc_id,
                 body=body,
@@ -85,7 +74,7 @@ class GoogleDocManager:
             return True, "Thành công"
         except HttpError as e:
             if e.resp.status == 403:
-                return False, "⚠️ KHÔNG THỂ TAG: File Doc ở chế độ chỉ xem (Viewer/Restricted). Cần cấp quyền Commenter/Editor cho Service Account!"
+                return False, "⚠️ File Doc ở chế độ Viewer/Restricted (Cần quyền Commenter)."
             return False, f"Lỗi Google API: {e.reason}"
         except Exception as e:
             return False, str(e)
