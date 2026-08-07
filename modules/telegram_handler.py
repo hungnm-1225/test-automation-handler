@@ -70,21 +70,17 @@ class TelegramBotHandler:
         await self.app.bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode="Markdown")
 
     async def send_restricted_doc_alert(self, task_data: dict):
-        """Cảnh báo file Doc bị khóa quyền Commenter - Hướng dẫn Admin bấm Request Access 2 giây"""
-        submitter_str = f"{task_data['submitter']}"
-        if task_data.get('email'):
-            submitter_str += f" ({task_data['email']})"
-
+        """Cảnh báo file Doc bị khóa quyền Commenter (Giải pháp 1)"""
         msg = (
-            f"⚠️ **CẢNH BÁO: GOOGLE DOC CHƯA MỞ QUYỀN COMMENT [{task_data['fb_id']}]**\n\n"
-            f"👤 **Submitter:** {submitter_str}\n"
+            f"⚠️ **GOOGLE DOC CHƯA MỞ QUYỀN COMMENT [{task_data['fb_id']}]**\n\n"
+            f"👤 **Người gửi:** {task_data['submitter']} ({task_data['country']})\n"
             f"📌 **Tiêu đề:** {task_data['subject']}\n"
-            f"📄 **Link Doc:** {task_data['doc_url']}\n\n"
-            f"👉 **HÀNH ĐỘNG CỦA ANH (MẤT 2 GIÂY):**\n"
-            f"1. Nhấn vào link Doc ở trên.\n"
-            f"2. Chọn **Commenter** -> Bấm **Request access**.\n"
-            f"3. Google sẽ gửi Email yêu cầu chính thức tới submitter (100% Không vào Spam).\n\n"
-            f"⏸️ **Trạng thái:** Tạm thời giữ nguyên dòng này trên Sheet. Lần quét tới khi người dùng mở quyền, Bot sẽ tự động xử lý tiếp!"
+            f"📄 **Doc Link:** {task_data['doc_url']}\n\n"
+            f"📢 **HƯỚNG DẪN XỬ LÝ NHANH (2 GIÂY):**\n"
+            f"1. Anh nhấp vào link Doc ở trên.\n"
+            f"2. Màn hình *'You need access'* hiện ra -> Chọn **Commenter** -> Bấm **Request access**.\n"
+            f"👉 Google sẽ tự động gửi Email chính thức tới người gửi (Đảm bảo 100% KHÔNG VÀO SPAM)!\n\n"
+            f"⏸️ **Trạng thái:** Tạm thời bỏ qua ticket này (Giữ nguyên chưa tick Assigned, chưa đổi Status)."
         )
         await self.app.bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode="Markdown")
 
