@@ -1,114 +1,150 @@
-import os
-import json
 import logging
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 logger = logging.getLogger(__name__)
 
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
+class TelegramBotHandler:
+    def __init__(self, token: str, admin_chat_id: str, sheet_mgr, doc_mgr):
+        self.token = token
+        self.admin_chat_id = admin_chat_id
+        self.sheet_mgr = sheet_mgr
+        self.doc_mgr = doc_mgr
+        self.pending_tasks = {}
+        self.app = Application.builder().token(token).build()
+        self._setup_handlers()
 
-def get_google_credentials():
-    creds_json_str = os.getenv("GOOGLE_CREDENTIALS_JSON")
-    if not creds_json_str:
-        raise ValueError("❌ THIẾU CẤU HÌNH: Không tìm thấy biến môi trường GOOGLE_CREDENTIALS_JSON trên Render!")
-    try:
-        info = json.loads(creds_json_str)
-        return Credentials.from_service_account_info(info, scopes=SCOPES)
-    except Exception as e:
-        raise ValueError(f"❌ Lỗi định dạng JSON trong biến GOOGLE_CREDENTIALS_JSON: {e}")
+    def _setup_handlers(self):
+        self.app.add_handler(CommandHandler("start", self._start_command))
+        self.app.add_handler(CallbackQueryHandler(self._button_click))
 
-class GoogleSheetManager:
-    def __init__(self, spreadsheet_id: str = None, *args, **kwargs):
-        self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID")
-        self.creds = get_google_credentials()
-        self.service = build('sheets', 'v4', credentials=self.creds)
+    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("🤖 Bot PTV Feedback Automation đã sẵn sàng hoạt động!")
 
-    def _get_valid_sheet_name(self, requested_name: str) -> str:
-        try:
-            spreadsheet_info = self.service.spreadsheets().get(
-                spreadsheetId=self.spreadsheet_id
-            ).execute()
-            sheets = spreadsheet_info.get('sheets', [])
-            sheet_names = [s['properties']['title'] for s in sheets]
+    async def send_approval_request(self, task_data: dict):
+        """Gửi thông báo CÓ NÚT BẤM cho Feedback có Google Doc hợp lệ"""
+        fb_id = task_data['fb_id']
+        self.pending_tasks[fb_id] = task_data
+
+        msg = (
+            f"📥 **FEEDBACK MỚI CẦN XỬ LÝ [{fb_id}]**\n\n"
+            f"👤 **Người gửi:** {task_data['submitter']} ({task_data['country']})\n"
+            f"✉️ **Email:** `{task_data.get('email', 'N/A')}`\n"
+            f"📌 **Tiêu đề:** {task_data['subject']}\n"
+            f"📝 **Ghi chú:** {task_data['remarks']}\n\n"
+            f"🤖 **AI ĐỀ XUẤT:**\n"
+            f"• **Category:** `{task_data['ai_res']['category']}`\n"
+            f"• **Status (Cột P):** `To Implement` (Sẽ tự gán khi duyệt)\n"
+            f"• **Người phụ trách:** {task_data['ai_res']['assigned_name']} ({task_data['ai_res']['assigned_email']})\n"
+            f"💡 **Tóm tắt vấn đề:** {task_data['ai_res']['summary_vi']}\n\n"
+            f"📄 **Doc Link:** {task_data['doc_url']}"
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Đồng ý & Thực thi", callback_data=f"approve_{fb_id}"),
+                InlineKeyboardButton("❌ Bỏ qua", callback_data=f"reject_{fb_id}")
+            ]
+        ]
+        await self.app.bot.send_message(
+            chat_id=self.admin_chat_id,
+            text=msg,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    async def send_info_notification(self, task_data: dict):
+        """Gửi thông báo KHÔNG CÓ NÚT BẤM cho Feedback KHÔNG CÓ Google Doc"""
+        msg = (
+            f"ℹ️ **FEEDBACK KHÔNG CÓ GOOGLE DOC [{task_data['fb_id']}]**\n\n"
+            f"👤 **Người gửi:** {task_data['submitter']} ({task_data['country']})\n"
+            f"📌 **Tiêu đề:** {task_data['subject']}\n"
+            f"📝 **Ghi chú:** {task_data['remarks']}\n\n"
+            f"🤖 **ĐÃ TỰ ĐỘNG CẬP NHẬT SHEET:**\n"
+            f"• **Category:** `{task_data['ai_res']['category']}`\n"
+            f"• **Assigned (Cột M):** `TRUE` (Đã tick)\n"
+            f"• **Status (Cột P):** `Non-Critical` (Đã gán)\n"
+            f"• **Người phụ trách:** {task_data['ai_res']['assigned_name']}\n"
+            f"💡 **Tóm tắt:** {task_data['ai_res']['summary_vi']}"
+        )
+        await self.app.bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode="Markdown")
+
+    async def send_restricted_doc_alert(self, task_data: dict):
+        """Cảnh báo file Doc bị khóa quyền Commenter - Hướng dẫn Admin bấm Request Access 2 giây"""
+        submitter_str = f"{task_data['submitter']}"
+        if task_data.get('email'):
+            submitter_str += f" ({task_data['email']})"
+
+        msg = (
+            f"⚠️ **CẢNH BÁO: GOOGLE DOC CHƯA MỞ QUYỀN COMMENT [{task_data['fb_id']}]**\n\n"
+            f"👤 **Submitter:** {submitter_str}\n"
+            f"📌 **Tiêu đề:** {task_data['subject']}\n"
+            f"📄 **Link Doc:** {task_data['doc_url']}\n\n"
+            f"👉 **HÀNH ĐỘNG CỦA ANH (MẤT 2 GIÂY):**\n"
+            f"1. Nhấn vào link Doc ở trên.\n"
+            f"2. Chọn **Commenter** -> Bấm **Request access**.\n"
+            f"3. Google sẽ gửi Email yêu cầu chính thức tới submitter (100% Không vào Spam).\n\n"
+            f"⏸️ **Trạng thái:** Tạm thời giữ nguyên dòng này trên Sheet. Lần quét tới khi người dùng mở quyền, Bot sẽ tự động xử lý tiếp!"
+        )
+        await self.app.bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode="Markdown")
+
+    async def _button_click(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+
+        data = query.data
+        action, fb_id = data.split("_", 1)
+
+        if fb_id not in self.pending_tasks:
+            await query.edit_message_text("⚠️ Yêu cầu này đã xử lý hoặc hết hạn trong bộ nhớ tạm.")
+            return
+
+        task = self.pending_tasks[fb_id]
+
+        if action == "approve":
+            await query.edit_message_text(f"⏳ Đang thực thi gán dữ liệu vào Sheet & Doc cho `{fb_id}`...")
             
-            if requested_name in sheet_names:
-                return requested_name
-            if len(sheet_names) > 0:
-                return sheet_names[0]
-        except Exception as e:
-            logger.error(f"Lỗi đọc tên Sheet: {e}")
-        return requested_name
+            try:
+                row_idx = task['row_index']
+                ai_res = task['ai_res']
+                doc_url = task['doc_url']
+                target_sheet = task.get('sheet_name', 'Feedbacks')
 
-    def get_unprocessed_rows(self, sheet_name: str = "Feedbacks", *args, **kwargs):
-        target_sheet_name = self._get_valid_sheet_name(sheet_name)
-        range_name = f"'{target_sheet_name}'!A2:P"
-        
-        result = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name
-        ).execute()
-        
-        rows = result.get('values', [])
-        unprocessed = []
+                # 1. Cập nhật Sheet: Category (L), Assigned Checkbox = TRUE (M), Status = "To Implement" (P)
+                self.sheet_mgr.update_feedback_row(
+                    sheet_name=target_sheet,
+                    row_index=row_idx,
+                    category=ai_res['category'],
+                    status="To Implement"
+                )
 
-        for index, row in enumerate(rows, start=2):
-            def get_col(idx):
-                return row[idx].strip() if idx < len(row) else ""
+                # 2. Tag người dùng vào Google Doc BẰNG TIẾNG ANH
+                doc_msg = "Không có URL Doc."
+                if doc_url:
+                    comment_text_en = (
+                        f"Hi {ai_res['assigned_name']},\n\n"
+                        f"This feedback ticket [{fb_id}] has been assigned to you.\n"
+                        f"Summary: {ai_res['summary_en']}\n\n"
+                        f"Please review and process accordingly."
+                    )
+                    success, msg = self.doc_mgr.add_comment_and_tag(
+                        doc_url=doc_url,
+                        comment_text_en=comment_text_en,
+                        tag_email=ai_res['assigned_email']
+                    )
+                    doc_msg = msg
 
-            submitter = get_col(3)     # Cột D (Submitter Name)
-            subject = get_col(4)       # Cột E (Subject)
-            email = get_col(5)         # Cột F (Email)
-            doc_url = get_col(6)       # Cột G (Report GoogleDoc)
-            fb_id = get_col(8)         # Cột I (FB ID)
-            category = get_col(11)     # Cột L (CATEGORY)
-            assigned_cb = get_col(12)  # Cột M (Assigned Checkbox)
-            status = get_col(15)       # Cột P (STATUS)
+                await query.edit_message_text(
+                    f"✅ **ĐÃ XỬ LÝ THÀNH CÔNG [{fb_id}]**\n\n"
+                    f"• Cập nhật Sheet: Category={ai_res['category']}, Assigned=TRUE, Status=To Implement (Cột P)\n"
+                    f"• Comment Google Doc (English): {doc_msg}"
+                )
+            except Exception as e:
+                logger.error(f"Lỗi thực thi approve: {e}")
+                await query.edit_message_text(f"❌ **XỬ LÝ THẤT BẠI [{fb_id}]**: {str(e)}")
 
-            # Lọc: Chỉ xử lý nếu Cột M (Assigned) CHƯA được tick [x]
-            if assigned_cb.upper() != "TRUE" and (submitter or subject or fb_id):
-                unprocessed.append({
-                    "row_index": index,
-                    "sheet_name": target_sheet_name,
-                    "timestamp": get_col(0),
-                    "country": get_col(2),
-                    "submitter": submitter,
-                    "subject": subject,
-                    "email": email,
-                    "doc_url": doc_url,
-                    "remarks": get_col(7),
-                    "fb_id": fb_id if fb_id else f"FB-AUTO-{index}",
-                    "category": category,
-                    "status": status
-                })
-        return unprocessed
+            del self.pending_tasks[fb_id]
 
-    def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str = "To Implement", *args, **kwargs):
-        target_sheet_name = self._get_valid_sheet_name(sheet_name)
-
-        # 1. Cập nhật Cột L (CATEGORY) và Cột M (Assigned Checkbox = TRUE)
-        range_lm = f"'{target_sheet_name}'!L{row_index}:M{row_index}"
-        body_lm = {"values": [[category, True]]}
-        
-        self.service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_lm,
-            valueInputOption="USER_ENTERED",
-            body=body_lm
-        ).execute()
-
-        # 2. Cập nhật Cột P (STATUS)
-        range_p = f"'{target_sheet_name}'!P{row_index}"
-        body_p = {"values": [[status]]}
-        
-        self.service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_p,
-            valueInputOption="USER_ENTERED",
-            body=body_p
-        ).execute()
-        
-        logger.info(f"✅ Updated Row {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE, Status={status} (Cột P)")
+        elif action == "reject":
+            await query.edit_message_text(f"🚫 Đã bỏ qua feedback [{fb_id}].")
+            del self.pending_tasks[fb_id]
