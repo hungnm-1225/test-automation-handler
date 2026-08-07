@@ -7,7 +7,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
-
+self.docs_service = build('docs', 'v1', credentials=self.creds, cache_discovery=False)
+self.drive_service = build('drive', 'v3', credentials=self.creds, cache_discovery=False)
 SCOPES = [
     'https://www.googleapis.com/auth/documents.readonly',
     'https://www.googleapis.com/auth/drive'
