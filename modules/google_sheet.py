@@ -17,20 +17,31 @@ def get_google_credentials():
         raise ValueError("❌ THIẾU CẤU HÌNH: Không tìm thấy biến môi trường GOOGLE_CREDENTIALS_JSON trên Render!")
     
     try:
-        # Tự động parse chuỗi JSON từ Env Vars trên Render
         info = json.loads(creds_json_str)
         return Credentials.from_service_account_info(info, scopes=SCOPES)
     except Exception as e:
         raise ValueError(f"❌ Lỗi định dạng JSON trong biến GOOGLE_CREDENTIALS_JSON: {e}")
 
 class GoogleSheetManager:
-    def __init__(self, spreadsheet_id: str):
-        self.spreadsheet_id = spreadsheet_id
+    def __init__(self, spreadsheet_id: str = None, *args, **kwargs):
+        # Linh hoạt lấy spreadsheet_id truyền vào hoặc đọc từ Env
+        self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID")
         self.creds = get_google_credentials()
         self.service = build('sheets', 'v4', credentials=self.creds)
 
-    def get_unprocessed_rows(self, sheet_name: str = "Feedbacks"):
-        range_name = f"{sheet_name}!A2:N"
+    def get_unprocessed_rows(self, sheet_name: str = "Feedbacks", *args, **kwargs):
+        # Tự động quét và tìm đúng tên Tab thực tế trên Sheet của anh
+        spreadsheet_info = self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+        sheets = spreadsheet_info.get('sheets', [])
+        
+        sheet_names = [s['properties']['title'] for s in sheets]
+        target_sheet_name = sheet_name
+        
+        if sheet_name not in sheet_names and len(sheet_names) > 0:
+            target_sheet_name = sheet_names[0]
+            logger.info(f"Dùng tab '{target_sheet_name}' để đọc dữ liệu.")
+
+        range_name = f"'{target_sheet_name}'!A2:N"
         result = self.service.spreadsheets().values().get(
             spreadsheet_id=self.spreadsheet_id,
             range=range_name
@@ -43,14 +54,15 @@ class GoogleSheetManager:
             def get_col(idx):
                 return row[idx].strip() if idx < len(row) else ""
 
-            fb_id = get_col(8)
-            category = get_col(10)
-            assigned_cb = get_col(11)
-            status = get_col(13)
+            fb_id = get_col(8)        # Cột I (Index 8)
+            category = get_col(10)    # Cột K (Index 10)
+            assigned_cb = get_col(11) # Cột L (Index 11)
+            status = get_col(13)      # Cột N (Index 13)
 
             if assigned_cb.upper() != "TRUE" or not category or not status:
                 unprocessed.append({
                     "row_index": index,
+                    "sheet_name": target_sheet_name,
                     "timestamp": get_col(0),
                     "country": get_col(2),
                     "submitter": get_col(3),
@@ -63,8 +75,8 @@ class GoogleSheetManager:
                 })
         return unprocessed
 
-    def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str):
-        range_kl = f"{sheet_name}!K{row_index}:L{row_index}"
+    def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str, *args, **kwargs):
+        range_kl = f"'{sheet_name}'!K{row_index}:L{row_index}"
         body_kl = {"values": [[category, True]]}
         self.service.spreadsheets().values().update(
             spreadsheet_id=self.spreadsheet_id,
@@ -73,7 +85,7 @@ class GoogleSheetManager:
             body=body_kl
         ).execute()
 
-        range_n = f"{sheet_name}!N{row_index}"
+        range_n = f"'{sheet_name}'!N{row_index}"
         body_n = {"values": [[status]]}
         self.service.spreadsheets().values().update(
             spreadsheet_id=self.spreadsheet_id,
