@@ -5,7 +5,6 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 logger = logging.getLogger(__name__)
-self.service = build('sheets', 'v4', credentials=self.creds, cache_discovery=False)
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -26,7 +25,8 @@ class GoogleSheetManager:
     def __init__(self, spreadsheet_id: str = None, *args, **kwargs):
         self.spreadsheet_id = spreadsheet_id or os.getenv("SPREADSHEET_ID")
         self.creds = get_google_credentials()
-        self.service = build('sheets', 'v4', credentials=self.creds)
+        # ĐẶT BÊN TRONG HÀM __init__
+        self.service = build('sheets', 'v4', credentials=self.creds, cache_discovery=False)
 
     def _get_valid_sheet_name(self, requested_name: str) -> str:
         try:
@@ -70,7 +70,6 @@ class GoogleSheetManager:
             assigned_cb = get_col(12)  # Cột M (Assigned Checkbox)
             status = get_col(15)       # Cột P (STATUS)
 
-            # LỌC CÁC DÒNG CHƯA TICK ASSIGNED TRÊN CỘT M
             if assigned_cb.upper() != "TRUE" and (submitter or subject or fb_id):
                 logger.info(f"📌 Phát hiện Ticket CHƯA XỬ LÝ ở dòng {index} [{fb_id or subject}]")
                 unprocessed.append({
@@ -92,7 +91,6 @@ class GoogleSheetManager:
     def update_feedback_row(self, sheet_name: str, row_index: int, category: str, status: str = "To Implement", *args, **kwargs):
         target_sheet_name = self._get_valid_sheet_name(sheet_name)
 
-        # 1. Cập nhật Cột L (CATEGORY) và Cột M (Assigned Checkbox = TRUE)
         range_lm = f"'{target_sheet_name}'!L{row_index}:M{row_index}"
         body_lm = {"values": [[category, True]]}
         
@@ -103,7 +101,6 @@ class GoogleSheetManager:
             body=body_lm
         ).execute()
 
-        # 2. Cập nhật Cột P (STATUS)
         range_p = f"'{target_sheet_name}'!P{row_index}"
         body_p = {"values": [[status]]}
         
@@ -114,4 +111,4 @@ class GoogleSheetManager:
             body=body_p
         ).execute()
         
-        logger.info(f"✅ Đã cập nhật dòng {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE (Cột M), Status={status} (Cột P)")
+        logger.info(f"✅ Đã cập nhật dòng {row_index} [{target_sheet_name}]: Category={category}, Assigned=TRUE, Status={status}")
